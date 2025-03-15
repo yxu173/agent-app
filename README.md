@@ -72,4 +72,4 @@ ag ws down
 
 ## More Information
 
-Learn more about the Agent App template and how to customize it in the [Agno Workspaces](https://docs.agno.com/workspaces) documentaion
+Learn more about this application and how to customize it in the [Agno Workspaces](https://docs.agno.com/workspaces) documentaion
