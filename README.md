@@ -1,4 +1,4 @@
-## Agent App
+## Agent App AWS
 
 This repo contains the code for a production-grade agentic system built with:
 
