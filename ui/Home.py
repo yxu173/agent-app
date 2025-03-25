@@ -48,7 +48,7 @@ async def body():
             """
         <div style="padding: 20px; border-radius: 10px; border: 1px solid #ddd; margin-bottom: 20px;">
             <h3>Scholar</h3>
-            <p>A research agent that uses Exa and DuckDuckGo to deliver in-depth answers about any topic.</p>
+            <p>A research agent that uses DuckDuckGo to deliver in-depth answers about any topic.</p>
             <p>Perfect for exploring general knowledge from the web.</p>
         </div>
         """,

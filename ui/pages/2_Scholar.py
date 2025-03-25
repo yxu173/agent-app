@@ -33,7 +33,7 @@ agent_name = "scholar"
 async def header():
     st.markdown("<h1 class='heading'>Scholar</h1>", unsafe_allow_html=True)
     st.markdown(
-        "<p class='subheading'>A research agent that uses Exa and DuckDuckGo to deliver in-depth answers about any topic.</p>",
+        "<p class='subheading'>A research agent that uses DuckDuckGo to deliver in-depth answers about any topic.</p>",
         unsafe_allow_html=True,
     )
 
