@@ -189,6 +189,9 @@ async def knowledge_widget(agent_name: str, agent: Agent) -> None:
                     reader = TextReader()
                 elif file_type == "docx":
                     reader = DocxReader()
+                else:
+                    st.sidebar.error("Unsupported file type")
+                    return
                 uploaded_file_documents: List[Document] = reader.read(uploaded_file)
                 if uploaded_file_documents:
                     agent.knowledge.load_documents(uploaded_file_documents, upsert=True)
