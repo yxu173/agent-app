@@ -6,11 +6,12 @@ from agno.models.openai import OpenAIChat
 from agno.storage.agent.postgres import PostgresAgentStorage
 from agno.tools.duckduckgo import DuckDuckGoTools
 
+from agents.settings import agent_settings
 from db.session import db_url
 
 
 def get_scholar(
-    model_id: str = "gpt-4o",
+    model_id: Optional[str] = None,
     user_id: Optional[str] = None,
     session_id: Optional[str] = None,
     debug_mode: bool = True,
@@ -21,12 +22,18 @@ def get_scholar(
         additional_context += f"You are interacting with the user: {user_id}"
         additional_context += "</context>"
 
+    model_id = agent_settings.gpt_4_mini
+
     return Agent(
         name="Scholar",
         agent_id="scholar",
         user_id=user_id,
         session_id=session_id,
-        model=OpenAIChat(id=model_id),
+        model=OpenAIChat(
+            id=model_id,
+            max_tokens=agent_settings.default_max_completion_tokens,
+            temperature=agent_settings.default_temperature,
+        ),
         # Tools available to the agent
         tools=[DuckDuckGoTools()],
         # Storage for the agent
