@@ -67,11 +67,7 @@ async def body() -> None:
     ####################################################################
     try:
         st.session_state[workflow_name]["session_id"] = workflow.load_session()
-    except Exception as e:
-        print(e)
-        import pdb
-
-        pdb.set_trace()
+    except Exception:
         st.warning("Could not create Workflow session, is the database running?")
         return
 
