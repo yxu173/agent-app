@@ -2,36 +2,36 @@ import asyncio
 
 import nest_asyncio
 import streamlit as st
-from agno.team import Team
 from agno.tools.streamlit.components import check_password
 from agno.utils.log import logger
+from agno.workflow import Workflow
 
-from teams.finance_researcher import get_finance_researcher_team
 from ui.css import CUSTOM_CSS
 from ui.utils import (
     about_agno,
     add_message,
     display_tool_calls,
     example_inputs,
-    initialize_team_session_state,
+    initialize_workflow_session_state,
     selected_model,
 )
+from workflows.blog_post_generator import get_blog_post_generator
 
 nest_asyncio.apply()
 
 st.set_page_config(
-    page_title="Finance Researcher Team",
-    page_icon=":money_bag:",
+    page_title="Blog post generator",
+    page_icon=":writing_hand:",
     layout="wide",
 )
 st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
-team_name = "finance_researcher_team"
+workflow_name = "blog_post_generator"
 
 
 async def header():
-    st.markdown("<h1 class='heading'>Finance Researcher Team</h1>", unsafe_allow_html=True)
+    st.markdown("<h1 class='heading'>Blog post generator</h1>", unsafe_allow_html=True)
     st.markdown(
-        "<p class='subheading'>A team of agents designed to produce financial research reports.</p>",
+        "<p class='subheading'>A workflow designed to generate blog posts.</p>",
         unsafe_allow_html=True,
     )
 
@@ -48,44 +48,48 @@ async def body() -> None:
     model_id = await selected_model()
 
     ####################################################################
-    # Initialize Team
+    # Initialize Workflow
     ####################################################################
-    team: Team
+    workflow: Workflow
     if (
-        team_name not in st.session_state
-        or st.session_state[team_name]["team"] is None
+        workflow_name not in st.session_state
+        or st.session_state[workflow_name]["workflow"] is None
         or st.session_state.get("selected_model") != model_id
     ):
-        logger.info("---*--- Creating Team ---*---")
-        team = get_finance_researcher_team(user_id=user_id, model_id=model_id)
+        logger.info("---*--- Creating Worfklow ---*---")
+        workflow = get_blog_post_generator()
         st.session_state["selected_model"] = model_id
     else:
-        team = st.session_state[team_name]["team"]
+        workflow = st.session_state[workflow_name]["workflow"]
 
     ####################################################################
-    # Load Team Session from the database
+    # Load Workflow Session from the database
     ####################################################################
     try:
-        st.session_state[team_name]["session_id"] = team.load_session()
-    except Exception:
-        st.warning("Could not create Team session, is the database running?")
+        st.session_state[workflow_name]["session_id"] = workflow.load_session()
+    except Exception as e:
+        print(e)
+        import pdb
+
+        pdb.set_trace()
+        st.warning("Could not create Workflow session, is the database running?")
         return
 
     ####################################################################
     # Get user input
     ####################################################################
     if prompt := st.chat_input("✨ How can I help, bestie?"):
-        await add_message(team_name, "user", prompt)
+        await add_message(workflow_name, "user", prompt)
 
     ####################################################################
     # Show example inputs
     ####################################################################
-    await example_inputs(team_name)
+    await example_inputs(workflow_name)
 
     ####################################################################
-    # Display agent messages
+    # Display workflow messages
     ####################################################################
-    for message in st.session_state[team_name]["messages"]:
+    for message in st.session_state[workflow_name]["messages"]:
         if message["role"] in ["user", "assistant"]:
             _content = message["content"]
             if _content is not None:
@@ -98,43 +102,35 @@ async def body() -> None:
     ####################################################################
     # Generate response for user message
     ####################################################################
-    last_message = st.session_state[team_name]["messages"][-1] if st.session_state[team_name]["messages"] else None
+    last_message = (
+        st.session_state[workflow_name]["messages"][-1] if st.session_state[workflow_name]["messages"] else None
+    )
     if last_message and last_message.get("role") == "user":
         user_message = last_message["content"]
         logger.info(f"Responding to message: {user_message}")
         with st.chat_message("assistant"):
             # Create container for tool calls
-            tool_calls_container = st.empty()
             resp_container = st.empty()
             with st.spinner(":thinking_face: Thinking..."):
                 response = ""
                 try:
-                    # Run the team and stream the response
-                    run_response = await team.arun(user_message, stream=True)
-                    async for resp_chunk in run_response:
-                        # Display tool calls if available
-                        if resp_chunk.tools and len(resp_chunk.tools) > 0:
-                            display_tool_calls(tool_calls_container, resp_chunk.tools)
-
-                        # Display response
-                        if resp_chunk.content is not None:
-                            response += resp_chunk.content
-                            resp_container.markdown(response)
-
+                    # Run the agent and stream the response
+                    run_response = workflow.run_workflow()
+                    resp_container.markdown(run_response)
                     # Add the response to the messages
-                    if team.run_response is not None:
-                        await add_message(team_name, "assistant", response, team.run_response.tools)
+                    if workflow.run_response is not None:
+                        await add_message(workflow_name, "assistant", response, workflow.run_response.tools)
                     else:
-                        await add_message(team_name, "assistant", response)
+                        await add_message(workflow_name, "assistant", response)
                 except Exception as e:
-                    logger.error(f"Error during team run: {str(e)}", exc_info=True)
+                    logger.error(f"Error during workflow run: {str(e)}", exc_info=True)
                     error_message = f"Sorry, I encountered an error: {str(e)}"
-                    await add_message(team_name, "assistant", error_message)
+                    await add_message(workflow_name, "assistant", error_message)
                     st.error(error_message)
 
 
 async def main():
-    await initialize_team_session_state(team_name)
+    await initialize_workflow_session_state(workflow_name)
     await header()
     await body()
     await about_agno()

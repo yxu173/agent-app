@@ -65,7 +65,7 @@ def get_multi_language_team(
     user_id: Optional[str] = None,
     session_id: Optional[str] = None,
     debug_mode: bool = True,
-):
+) -> Team:
     model_id = model_id or team_settings.gpt_4
 
     return Team(

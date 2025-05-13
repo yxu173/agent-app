@@ -22,6 +22,26 @@ async def initialize_agent_session_state(agent_name: str):
         }
 
 
+async def initialize_team_session_state(team_name: str):
+    logger.info(f"---*--- Initializing session state for {team_name} ---*---")
+    if team_name not in st.session_state:
+        st.session_state[team_name] = {
+            "team": None,
+            "session_id": None,
+            "messages": [],
+        }
+
+
+async def initialize_workflow_session_state(workflow_name: str):
+    logger.info(f"---*--- Initializing session state for {workflow_name} ---*---")
+    if workflow_name not in st.session_state:
+        st.session_state[workflow_name] = {
+            "workflow": None,
+            "session_id": None,
+            "messages": [],
+        }
+
+
 async def selected_model() -> str:
     """Display a model selector in the sidebar."""
     model_options = {

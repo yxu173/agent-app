@@ -13,7 +13,7 @@ from ui.utils import (
     add_message,
     display_tool_calls,
     example_inputs,
-    initialize_agent_session_state,
+    initialize_team_session_state,
     selected_model,
 )
 
@@ -53,7 +53,7 @@ async def body() -> None:
     team: Team
     if (
         team_name not in st.session_state
-        or st.session_state[team_name]["agent"] is None
+        or st.session_state[team_name]["team"] is None
         or st.session_state.get("selected_model") != model_id
     ):
         logger.info("---*--- Creating Team ---*---")
@@ -72,23 +72,6 @@ async def body() -> None:
         return
 
     ####################################################################
-    # Load agent runs (i.e. chat history) from memory is messages is empty
-    ####################################################################
-    if team.memory:
-        team_runs = team.memory.runs
-        if team_runs and len(team_runs) > 0:
-            # If there are runs, load the messages
-            logger.debug("Loading run history")
-            # Clear existing messages
-            st.session_state[team_name]["messages"] = []
-            # Loop through the runs and add the messages to the messages list
-            for team_run in team_runs:
-                if team_run.message is not None:
-                    await add_message(team_name, team_run.message.role, str(team_run.message.content))
-                if team_run.response is not None:
-                    await add_message(team_name, "assistant", str(team_run.response.content), team_run.response.tools)
-
-    ####################################################################
     # Get user input
     ####################################################################
     if prompt := st.chat_input("✨ How can I help, bestie?"):
@@ -100,7 +83,7 @@ async def body() -> None:
     await example_inputs(team_name)
 
     ####################################################################
-    # Display agent messages
+    # Display team messages
     ####################################################################
     for message in st.session_state[team_name]["messages"]:
         if message["role"] in ["user", "assistant"]:
@@ -126,7 +109,7 @@ async def body() -> None:
             with st.spinner(":thinking_face: Thinking..."):
                 response = ""
                 try:
-                    # Run the agent and stream the response
+                    # Run the team and stream the response
                     run_response = await team.arun(user_message, stream=True)
                     async for resp_chunk in run_response:
                         # Display tool calls if available
@@ -144,14 +127,14 @@ async def body() -> None:
                     else:
                         await add_message(team_name, "assistant", response)
                 except Exception as e:
-                    logger.error(f"Error during agent run: {str(e)}", exc_info=True)
+                    logger.error(f"Error during team run: {str(e)}", exc_info=True)
                     error_message = f"Sorry, I encountered an error: {str(e)}"
                     await add_message(team_name, "assistant", error_message)
                     st.error(error_message)
 
 
 async def main():
-    await initialize_agent_session_state(team_name)
+    await initialize_team_session_state(team_name)
     await header()
     await body()
     await about_agno()

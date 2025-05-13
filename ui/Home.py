@@ -86,6 +86,35 @@ async def body():
         if st.button("Launch Finance team", key="finance_team_button"):
             st.switch_page("pages/4_Finance_team.py")
 
+    st.markdown("### Available Workflows")
+
+    col1, col2 = st.columns(2)
+    with col1:
+        st.markdown(
+            """
+        <div style="padding: 20px; border-radius: 10px; border: 1px solid #ddd; margin-bottom: 20px;">
+            <h3>Blog post generator</h3>
+            <p>A workflow designed to generate blog posts.</p>
+        </div>
+        """,
+            unsafe_allow_html=True,
+        )
+        if st.button("Launch Blog post generator", key="blog_post_generator_button"):
+            st.switch_page("pages/5_Blog_post_generator.py")
+
+    with col2:
+        st.markdown(
+            """
+        <div style="padding: 20px; border-radius: 10px; border: 1px solid #ddd; margin-bottom: 20px;">
+            <h3>Investment report generator</h3>
+            <p>A workflow designed to generate investment reports.</p>
+        </div>
+        """,
+            unsafe_allow_html=True,
+        )
+        if st.button("Launch Investment report generator", key="investment_report_generator_button"):
+            st.switch_page("pages/6_Investment_report_generator.py")
+
 
 async def main():
     await header()
