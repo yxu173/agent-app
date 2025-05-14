@@ -51,14 +51,9 @@ async def body() -> None:
     # Initialize Workflow
     ####################################################################
     workflow: Workflow
-    if (
-        workflow_name not in st.session_state
-        or st.session_state[workflow_name]["workflow"] is None
-        or st.session_state.get("selected_model") != model_id
-    ):
+    if workflow_name not in st.session_state or st.session_state[workflow_name]["workflow"] is None:
         logger.info("---*--- Creating Worfklow ---*---")
         workflow = get_blog_post_generator()
-        st.session_state["selected_model"] = model_id
     else:
         workflow = st.session_state[workflow_name]["workflow"]
 
@@ -66,6 +61,7 @@ async def body() -> None:
     # Load Workflow Session from the database
     ####################################################################
     try:
+        workflow.set_session_id()
         st.session_state[workflow_name]["session_id"] = workflow.load_session()
     except Exception:
         st.warning("Could not create Workflow session, is the database running?")
@@ -74,7 +70,7 @@ async def body() -> None:
     ####################################################################
     # Get user input
     ####################################################################
-    if prompt := st.chat_input("✨ How can I help, bestie?"):
+    if prompt := st.chat_input("✨ What should I write about?"):
         await add_message(workflow_name, "user", prompt)
 
     ####################################################################
@@ -106,13 +102,23 @@ async def body() -> None:
         logger.info(f"Responding to message: {user_message}")
         with st.chat_message("assistant"):
             # Create container for tool calls
+            tool_calls_container = st.empty()
             resp_container = st.empty()
-            with st.spinner(":thinking_face: Thinking..."):
+            with st.spinner(":thinking_face: Working on the blog post..."):
                 response = ""
                 try:
-                    # Run the agent and stream the response
-                    run_response = workflow.run_workflow()
-                    resp_container.markdown(run_response)
+                    # Run the team and stream the response
+                    run_response = workflow.run_workflow(topic=user_message)
+                    for resp_chunk in run_response:
+                        # Display tool calls if available
+                        if resp_chunk.tools and len(resp_chunk.tools) > 0:
+                            display_tool_calls(tool_calls_container, resp_chunk.tools)
+
+                        # Display response
+                        if resp_chunk.content is not None:
+                            response += resp_chunk.content
+                            resp_container.markdown(response)
+
                     # Add the response to the messages
                     if workflow.run_response is not None:
                         await add_message(workflow_name, "assistant", response, workflow.run_response.tools)
