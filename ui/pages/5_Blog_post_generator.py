@@ -13,7 +13,6 @@ from ui.utils import (
     display_tool_calls,
     example_inputs,
     initialize_workflow_session_state,
-    selected_model,
 )
 from workflows.blog_post_generator import get_blog_post_generator
 
@@ -41,11 +40,6 @@ async def body() -> None:
     # Initialize User and Session State
     ####################################################################
     st.sidebar.text_input(":technologist: Username", value="Ava")
-
-    ####################################################################
-    # Model selector
-    ####################################################################
-    model_id = await selected_model()
 
     ####################################################################
     # Initialize Workflow
