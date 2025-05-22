@@ -3,6 +3,7 @@ import asyncio
 import nest_asyncio
 import streamlit as st
 from agno.agent import Agent
+from agno.memory.agent import AgentRun
 from agno.tools.streamlit.components import check_password
 from agno.utils.log import logger
 
@@ -80,13 +81,15 @@ async def body() -> None:
     ####################################################################
     if sage.memory:
         agent_runs = sage.memory.runs
-        if len(agent_runs) > 0:
+        if agent_runs is not None and len(agent_runs) > 0:  # type: ignore
             # If there are runs, load the messages
             logger.debug("Loading run history")
             # Clear existing messages
             st.session_state[agent_name]["messages"] = []
             # Loop through the runs and add the messages to the messages list
             for agent_run in agent_runs:
+                if not isinstance(agent_run, AgentRun):
+                    continue
                 if agent_run.message is not None:
                     await add_message(agent_name, agent_run.message.role, str(agent_run.message.content))
                 if agent_run.response is not None:
