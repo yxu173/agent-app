@@ -22,7 +22,7 @@ def get_scholar(
         additional_context += f"You are interacting with the user: {user_id}"
         additional_context += "</context>"
 
-    model_id = agent_settings.gpt_4_mini
+    model_id = model_id or agent_settings.gpt_4_mini
 
     return Agent(
         name="Scholar",
