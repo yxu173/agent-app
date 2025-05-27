@@ -23,6 +23,9 @@ dependencies = [
   "tiktoken",
   "typer",
   "yfinance",
+  "aiofiles",
+  "newspaper4k",
+  "lxml_html_clean",
 ]
 
 [project.optional-dependencies]
