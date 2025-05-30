@@ -32,8 +32,8 @@ def get_sage(
         session_id=session_id,
         model=OpenAIChat(
             id=model_id,
-            max_tokens=agent_settings.default_max_completion_tokens,
-            temperature=agent_settings.default_temperature,
+            max_completion_tokens=agent_settings.default_max_completion_tokens,
+            temperature=agent_settings.default_temperature if model_id != "o3-mini" else None,
         ),
         # Tools available to the agent
         tools=[DuckDuckGoTools()],

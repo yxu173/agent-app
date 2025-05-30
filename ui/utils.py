@@ -9,37 +9,35 @@ from agno.document.reader.docx_reader import DocxReader
 from agno.document.reader.pdf_reader import PDFReader
 from agno.document.reader.text_reader import TextReader
 from agno.document.reader.website_reader import WebsiteReader
+from agno.models.response import ToolExecution
 from agno.utils.log import logger
 
 
 async def initialize_agent_session_state(agent_name: str):
     logger.info(f"---*--- Initializing session state for {agent_name} ---*---")
-    if agent_name not in st.session_state:
-        st.session_state[agent_name] = {
-            "agent": None,
-            "session_id": None,
-            "messages": [],
-        }
+    st.session_state[agent_name] = {
+        "agent": None,
+        "session_id": None,
+        "messages": [],
+    }
 
 
 async def initialize_team_session_state(team_name: str):
     logger.info(f"---*--- Initializing session state for {team_name} ---*---")
-    if team_name not in st.session_state:
-        st.session_state[team_name] = {
-            "team": None,
-            "session_id": None,
-            "messages": [],
-        }
+    st.session_state[team_name] = {
+        "team": None,
+        "session_id": None,
+        "messages": [],
+    }
 
 
 async def initialize_workflow_session_state(workflow_name: str):
     logger.info(f"---*--- Initializing session state for {workflow_name} ---*---")
-    if workflow_name not in st.session_state:
-        st.session_state[workflow_name] = {
-            "workflow": None,
-            "session_id": None,
-            "messages": [],
-        }
+    st.session_state[workflow_name] = {
+        "workflow": None,
+        "session_id": None,
+        "messages": [],
+    }
 
 
 async def selected_model() -> str:
@@ -81,10 +79,16 @@ def display_tool_calls(tool_calls_container, tools):
     try:
         with tool_calls_container.container():
             for tool_call in tools:
-                tool_name = tool_call.get("tool_name", "Unknown Tool")
-                tool_args = tool_call.get("tool_args", {})
-                content = tool_call.get("content")
-                metrics = tool_call.get("metrics", {})
+                if isinstance(tool_call, ToolExecution):
+                    tool_name = tool_call.tool_name
+                    tool_args = tool_call.tool_args
+                    content = tool_call.result if tool_call.result else None
+                    metrics = getattr(tool_call, "metrics", None)
+                else:
+                    tool_name = tool_call.get("tool_name", "Unknown Tool")
+                    tool_args = tool_call.get("tool_args", {})
+                    content = tool_call.get("content")
+                    metrics = tool_call.get("metrics", {})
 
                 # Add timing information
                 execution_time_str = "N/A"
@@ -323,12 +327,20 @@ def export_chat_history(agent_name: str):
         if msg.get("tool_calls"):
             chat_text += "#### Tool Calls:\n"
             for i, tool_call in enumerate(msg["tool_calls"]):
-                tool_name = tool_call.get("name", "Unknown Tool")
-                chat_text += f"**{i + 1}. {tool_name}**\n\n"
-                if "arguments" in tool_call:
-                    chat_text += f"Arguments: ```json\n{tool_call['arguments']}\n```\n\n"
-                if "content" in tool_call:
-                    chat_text += f"Results: ```\n{tool_call['content']}\n```\n\n"
+                if isinstance(tool_call, ToolExecution):
+                    tool_name = tool_call.tool_name
+                    chat_text += f"**{i + 1}. {tool_name}**\n\n"
+                    if tool_call.tool_args is not None:
+                        chat_text += f"Arguments: ```json\n{tool_call.tool_args}\n```\n\n"
+                    if tool_call.result is not None:
+                        chat_text += f"Results: ```\n{tool_call.result}\n```\n\n"
+                else:
+                    tool_name = tool_call.get("name", "Unknown Tool")
+                    chat_text += f"**{i + 1}. {tool_name}**\n\n"
+                    if "arguments" in tool_call:
+                        chat_text += f"Arguments: ```json\n{tool_call['arguments']}\n```\n\n"
+                    if "content" in tool_call:
+                        chat_text += f"Results: ```\n{tool_call['content']}\n```\n\n"
 
     return chat_text
 

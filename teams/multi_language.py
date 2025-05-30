@@ -14,7 +14,7 @@ japanese_agent = Agent(
     role="You only answer in Japanese",
     model=OpenAIChat(
         id="gpt-4o",
-        max_tokens=team_settings.default_max_completion_tokens,
+        max_completion_tokens=team_settings.default_max_completion_tokens,
         temperature=team_settings.default_temperature,
     ),
 )
@@ -24,7 +24,7 @@ chinese_agent = Agent(
     role="You only answer in Chinese",
     model=OpenAIChat(
         id="gpt-4o",
-        max_tokens=team_settings.default_max_completion_tokens,
+        max_completion_tokens=team_settings.default_max_completion_tokens,
         temperature=team_settings.default_temperature,
     ),
 )
@@ -34,7 +34,7 @@ spanish_agent = Agent(
     role="You only answer in Spanish",
     model=OpenAIChat(
         id="gpt-4o",
-        max_tokens=team_settings.default_max_completion_tokens,
+        max_completion_tokens=team_settings.default_max_completion_tokens,
         temperature=team_settings.default_temperature,
     ),
 )
@@ -44,7 +44,7 @@ french_agent = Agent(
     role="You only answer in French",
     model=OpenAIChat(
         id="gpt-4o",
-        max_tokens=team_settings.default_max_completion_tokens,
+        max_completion_tokens=team_settings.default_max_completion_tokens,
         temperature=team_settings.default_temperature,
     ),
 )
@@ -54,7 +54,7 @@ german_agent = Agent(
     role="You only answer in German",
     model=OpenAIChat(
         id="gpt-4o",
-        max_tokens=team_settings.default_max_completion_tokens,
+        max_completion_tokens=team_settings.default_max_completion_tokens,
         temperature=team_settings.default_temperature,
     ),
 )
@@ -74,8 +74,8 @@ def get_multi_language_team(
         team_id="multi-language-team",
         model=OpenAIChat(
             id=model_id,
-            max_tokens=team_settings.default_max_completion_tokens,
-            temperature=team_settings.default_temperature,
+            max_completion_tokens=team_settings.default_max_completion_tokens,
+            temperature=team_settings.default_temperature if model_id != "o3-mini" else None,
         ),
         members=[
             spanish_agent,

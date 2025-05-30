@@ -58,9 +58,10 @@ async def body() -> None:
     ):
         logger.info("---*--- Creating Team ---*---")
         team = get_multi_language_team(user_id=user_id, model_id=model_id)
+        st.session_state[team_name]["team"] = team
         st.session_state["selected_model"] = model_id
     else:
-        team = st.session_state[team_name]
+        team = st.session_state[team_name]["team"]
 
     ####################################################################
     # Load Team Session from the database

@@ -17,7 +17,7 @@ finance_agent = Agent(
     agent_id="finance-agent",
     model=OpenAIChat(
         id=team_settings.gpt_4,
-        max_tokens=team_settings.default_max_completion_tokens,
+        max_completion_tokens=team_settings.default_max_completion_tokens,
         temperature=team_settings.default_temperature,
     ),
     tools=[YFinanceTools(enable_all=True, cache_results=True)],
@@ -66,7 +66,7 @@ web_agent = Agent(
     role="Search the web for information",
     model=OpenAIChat(
         id=team_settings.gpt_4,
-        max_tokens=team_settings.default_max_completion_tokens,
+        max_completion_tokens=team_settings.default_max_completion_tokens,
         temperature=team_settings.default_temperature,
     ),
     tools=[DuckDuckGoTools(cache_results=True)],
@@ -101,8 +101,8 @@ def get_finance_researcher_team(
         description="You are a team of finance researchers!",
         model=OpenAIChat(
             id=model_id,
-            max_tokens=team_settings.default_max_completion_tokens,
-            temperature=team_settings.default_temperature,
+            max_completion_tokens=team_settings.default_max_completion_tokens,
+            temperature=team_settings.default_temperature if model_id != "o3-mini" else None,
         ),
         success_criteria="A good financial research report.",
         enable_agentic_context=True,
