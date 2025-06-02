@@ -22,6 +22,6 @@ playground = Playground(agents=[sage_agent, scholar_agent], teams=[finance_resea
 
 # Register the endpoint where playground routes are served with agno.com
 if getenv("RUNTIME_ENV") == "dev":
-    playground.create_endpoint(f"http://localhost:{dev_fastapi.host_port}")
+    playground.serve(f"http://localhost:{dev_fastapi.host_port}")
 
 playground_router = playground.get_async_router()

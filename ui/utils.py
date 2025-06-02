@@ -1,4 +1,4 @@
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Union
 
 import streamlit as st
 from agno.agent import Agent
@@ -56,7 +56,10 @@ async def selected_model() -> str:
 
 
 async def add_message(
-    agent_name: str, role: str, content: str, tool_calls: Optional[List[Dict[str, Any]]] = None
+    agent_name: str,
+    role: str,
+    content: str,
+    tool_calls: Optional[Union[List[Dict[str, Any]], List[ToolExecution]]] = None,
 ) -> None:
     """Safely add a message to the Agent's session state."""
     # if role == "user":
