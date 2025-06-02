@@ -105,7 +105,7 @@ def display_tool_calls(tool_calls_container, tools):
                     pass
 
                 with st.expander(
-                    f"🛠️ {tool_name.replace('_', ' ').title()} ({execution_time_str})",
+                    f"🛠️ {tool_name.replace('_', ' ').title() if tool_name else 'Tool'} ({execution_time_str})",
                     expanded=False,
                 ):
                     # Show query with syntax highlighting
