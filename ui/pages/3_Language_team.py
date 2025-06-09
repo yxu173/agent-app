@@ -2,39 +2,36 @@ import asyncio
 
 import nest_asyncio
 import streamlit as st
-from agno.agent import Agent
-from agno.memory.agent import AgentRun
+from agno.team import Team
 from agno.tools.streamlit.components import check_password
 from agno.utils.log import logger
 
-from agents.scholar import get_scholar
+from teams.multi_language import get_multi_language_team
 from ui.css import CUSTOM_CSS
 from ui.utils import (
     about_agno,
     add_message,
     display_tool_calls,
     example_inputs,
-    initialize_agent_session_state,
+    initialize_team_session_state,
     selected_model,
-    session_selector,
-    utilities_widget,
 )
 
 nest_asyncio.apply()
 
 st.set_page_config(
-    page_title="Scholar: The Research Agent",
-    page_icon=":crystal_ball:",
+    page_title="Multi-language Team",
+    page_icon=":speaking_head:",
     layout="wide",
 )
 st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
-agent_name = "scholar"
+team_name = "multi_language_team"
 
 
 async def header():
-    st.markdown("<h1 class='heading'>Scholar</h1>", unsafe_allow_html=True)
+    st.markdown("<h1 class='heading'>Multi-language Team</h1>", unsafe_allow_html=True)
     st.markdown(
-        "<p class='subheading'>A research agent that uses DuckDuckGo to deliver in-depth answers about any topic.</p>",
+        "<p class='subheading'>A team of agents designed to answer questions in different languages.</p>",
         unsafe_allow_html=True,
     )
 
@@ -51,66 +48,45 @@ async def body() -> None:
     model_id = await selected_model()
 
     ####################################################################
-    # Initialize Agent
+    # Initialize Team
     ####################################################################
-    scholar: Agent
+    team: Team
     if (
-        agent_name not in st.session_state
-        or st.session_state[agent_name]["agent"] is None
+        team_name not in st.session_state
+        or st.session_state[team_name]["team"] is None
         or st.session_state.get("selected_model") != model_id
     ):
-        logger.info("---*--- Creating Scholar agent ---*---")
-        scholar = get_scholar(user_id=user_id, model_id=model_id)
-        st.session_state[agent_name]["agent"] = scholar
+        logger.info("---*--- Creating Team ---*---")
+        team = get_multi_language_team(user_id=user_id, model_id=model_id)
+        st.session_state[team_name]["team"] = team
         st.session_state["selected_model"] = model_id
     else:
-        scholar = st.session_state[agent_name]["agent"]
+        team = st.session_state[team_name]["team"]
 
     ####################################################################
-    # Load Agent Session from the database
+    # Load Team Session from the database
     ####################################################################
     try:
-        st.session_state[agent_name]["session_id"] = scholar.load_session()
+        st.session_state[team_name]["session_id"] = team.load_session()
     except Exception:
-        st.warning("Could not create Scholar session, is the database running?")
+        st.warning("Could not create Team session, is the database running?")
         return
-
-    ####################################################################
-    # Load agent runs (i.e. chat history) from memory is messages is empty
-    ####################################################################
-    if scholar.memory:
-        agent_runs = scholar.memory.runs
-        if agent_runs is not None and len(agent_runs) > 0:  # type: ignore
-            # If there are runs, load the messages
-            logger.debug("Loading run history")
-            # Clear existing messages
-            st.session_state[agent_name]["messages"] = []
-            # Loop through the runs and add the messages to the messages list
-            for agent_run in agent_runs:
-                if not isinstance(agent_run, AgentRun):
-                    continue
-                if agent_run.message is not None:
-                    await add_message(agent_name, agent_run.message.role, str(agent_run.message.content))
-                if agent_run.response is not None:
-                    await add_message(
-                        agent_name, "assistant", str(agent_run.response.content), agent_run.response.tools
-                    )
 
     ####################################################################
     # Get user input
     ####################################################################
-    if prompt := st.chat_input("✨ What would you like to know, bestie?"):
-        await add_message(agent_name, "user", prompt)
+    if prompt := st.chat_input("✨ How can I help, bestie?"):
+        await add_message(team_name, "user", prompt)
 
     ####################################################################
     # Show example inputs
     ####################################################################
-    await example_inputs(agent_name)
+    await example_inputs(team_name)
 
     ####################################################################
-    # Display agent messages
+    # Display team messages
     ####################################################################
-    for message in st.session_state[agent_name]["messages"]:
+    for message in st.session_state[team_name]["messages"]:
         if message["role"] in ["user", "assistant"]:
             _content = message["content"]
             if _content is not None:
@@ -123,7 +99,7 @@ async def body() -> None:
     ####################################################################
     # Generate response for user message
     ####################################################################
-    last_message = st.session_state[agent_name]["messages"][-1] if st.session_state[agent_name]["messages"] else None
+    last_message = st.session_state[team_name]["messages"][-1] if st.session_state[team_name]["messages"] else None
     if last_message and last_message.get("role") == "user":
         user_message = last_message["content"]
         logger.info(f"Responding to message: {user_message}")
@@ -134,8 +110,8 @@ async def body() -> None:
             with st.spinner(":thinking_face: Thinking..."):
                 response = ""
                 try:
-                    # Run the agent and stream the response
-                    run_response = await scholar.arun(user_message, stream=True)
+                    # Run the team and stream the response
+                    run_response = await team.arun(user_message, stream=True)
                     async for resp_chunk in run_response:
                         # Display tool calls if available
                         if resp_chunk.tools and len(resp_chunk.tools) > 0:
@@ -147,29 +123,19 @@ async def body() -> None:
                             resp_container.markdown(response)
 
                     # Add the response to the messages
-                    if scholar.run_response is not None:
-                        await add_message(agent_name, "assistant", response, scholar.run_response.tools)
+                    if team.run_response is not None:
+                        await add_message(team_name, "assistant", response, team.run_response.tools)
                     else:
-                        await add_message(agent_name, "assistant", response)
+                        await add_message(team_name, "assistant", response)
                 except Exception as e:
-                    logger.error(f"Error during agent run: {str(e)}", exc_info=True)
+                    logger.error(f"Error during team run: {str(e)}", exc_info=True)
                     error_message = f"Sorry, I encountered an error: {str(e)}"
-                    await add_message(agent_name, "assistant", error_message)
+                    await add_message(team_name, "assistant", error_message)
                     st.error(error_message)
-
-    ####################################################################
-    # Session selector
-    ####################################################################
-    await session_selector(agent_name, scholar, get_scholar, user_id, model_id)
-
-    ####################################################################
-    # About section
-    ####################################################################
-    await utilities_widget(agent_name, scholar)
 
 
 async def main():
-    await initialize_agent_session_state(agent_name)
+    await initialize_team_session_state(team_name)
     await header()
     await body()
     await about_agno()

@@ -43,13 +43,7 @@ Required: Set the `OPENAI_API_KEY` environment variable using
 export OPENAI_API_KEY=***
 ```
 
-> you may use any model provider, just need to update the agents in the /agents folder
-
-Optional: Set the `EXA_API_KEY` if you'd like to use Exa search
-
-```sh
-export EXA_API_KEY=***
-```
+> You may use any supported model provider, just need to update the respective Agent, Team or Workflow.
 
 3. Start the workspace:
 

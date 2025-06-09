@@ -28,7 +28,7 @@ ws_settings = WorkspaceSettings(
     push_images=False,
     # Skip cache when building images
     skip_image_cache=False,
-    # Force pull images in FROM
+    # Force pull images
     force_pull_images=False,
     # -*- AWS settings
     # Region for AWS resources
