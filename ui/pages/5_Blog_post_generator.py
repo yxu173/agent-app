@@ -11,7 +11,6 @@ from ui.utils import (
     about_agno,
     add_message,
     display_tool_calls,
-    example_inputs,
     initialize_workflow_session_state,
 )
 from workflows.blog_post_generator import get_blog_post_generator
@@ -66,11 +65,6 @@ async def body() -> None:
     ####################################################################
     if prompt := st.chat_input("✨ What should I write about?"):
         await add_message(workflow_name, "user", prompt)
-
-    ####################################################################
-    # Show example inputs
-    ####################################################################
-    await example_inputs(workflow_name)
 
     ####################################################################
     # Display workflow messages
