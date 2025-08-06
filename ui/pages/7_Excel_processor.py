@@ -66,25 +66,6 @@ async def sidebar():
     """Display sidebar with session management."""
     st.sidebar.markdown("### 📊 Session Management")
     
-    # New Session Button
-    if st.sidebar.button("🆕 New Session", use_container_width=True):
-        # Clear current session and create a new one
-        if workflow_name in st.session_state:
-            st.session_state[workflow_name] = {}
-        st.rerun()
-    
-    st.sidebar.markdown("---")
-    
-    # Session status indicator
-    if workflow_name in st.session_state and "session_id" in st.session_state[workflow_name]:
-        session_id = st.session_state[workflow_name]["session_id"]
-        if session_id:
-            st.sidebar.success("✅ Active Session")
-        else:
-            st.sidebar.warning("⚠️ No Active Session")
-    else:
-        st.sidebar.info("ℹ️ No Session Created")
-    
     # Session naming
     if workflow_name in st.session_state and "session_id" in st.session_state[workflow_name]:
         session_id = st.session_state[workflow_name]["session_id"]
@@ -110,7 +91,6 @@ async def sidebar():
     # Session list
     sessions = await get_session_list()
     if sessions:
-        st.sidebar.markdown("#### 📋 Previous Sessions")
         selected_session = st.sidebar.selectbox(
             "Choose Session",
             options=[s["display_name"] for s in sessions],
@@ -122,44 +102,21 @@ async def sidebar():
             selected_session_id = next(s["id"] for s in sessions if s["display_name"] == selected_session)
             # Load the selected session
             st.session_state[workflow_name]["session_id"] = selected_session_id
-            # Preserve messages when switching sessions
-            if "messages" not in st.session_state[workflow_name]:
-                st.session_state[workflow_name]["messages"] = []
             st.rerun()
     else:
         st.sidebar.info("No previous sessions found")
     
-    # Session actions
-    st.sidebar.markdown("#### ⚙️ Session Actions")
-    
-    col1, col2 = st.sidebar.columns(2)
-    
-    with col1:
-        if st.button("🔄 Refresh", use_container_width=True):
-            st.rerun()
-    
-    with col2:
-        if st.button("🗑️ Clear", use_container_width=True):
-            if workflow_name in st.session_state:
-                st.session_state[workflow_name] = {}
-            st.rerun()
+    # Clear session button
+    if st.sidebar.button("🗑️ Clear Current Session"):
+        if workflow_name in st.session_state:
+            st.session_state[workflow_name] = {}
+        st.rerun()
     
     # Session info
     if workflow_name in st.session_state and "session_id" in st.session_state[workflow_name]:
         session_id = st.session_state[workflow_name]["session_id"]
         if session_id:
-            st.sidebar.markdown("#### 📊 Current Session")
-            st.sidebar.markdown(f"**Session ID:** {session_id}")
-            
-            # Show session creation time if available
-            try:
-                workflow = get_excel_processor()
-                if workflow.storage:
-                    session_data = workflow.storage.get_session_data(session_id)
-                    if session_data and "created_at" in session_data:
-                        st.sidebar.markdown(f"**Created:** {session_data['created_at']}")
-            except:
-                pass
+            st.sidebar.markdown(f"**Current Session:** {session_id}")
             
             # Check if there are results for this session
             session_excel_file = f"tmp/session_keywords_{session_id}.xlsx"
@@ -173,8 +130,7 @@ async def sidebar():
                         label="📥 Download Results",
                         data=file.read(),
                         file_name=f"processed_keywords_{session_id}.xlsx",
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                        key=f"sidebar_download_{session_id}"  # Unique key for sidebar download
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                     )
 
 
@@ -186,7 +142,6 @@ async def body() -> None:
     if workflow_name not in st.session_state or st.session_state[workflow_name]["workflow"] is None:
         logger.info("---*--- Creating Workflow ---*---")
         workflow = get_excel_processor()
-        st.session_state[workflow_name]["workflow"] = workflow
     else:
         workflow = st.session_state[workflow_name]["workflow"]
 
@@ -199,12 +154,6 @@ async def body() -> None:
     except Exception:
         st.warning("Could not create Workflow session, is the database running?")
         return
-
-    ####################################################################
-    # Ensure messages are initialized
-    ####################################################################
-    if "messages" not in st.session_state[workflow_name]:
-        st.session_state[workflow_name]["messages"] = []
 
     ####################################################################
     # File Upload Section
@@ -365,10 +314,7 @@ async def body() -> None:
     # Display all messages in chat format
     messages = st.session_state[workflow_name]["messages"]
     if messages:
-        # Show message count
-        st.markdown(f"**📝 Total Messages:** {len(messages)}")
-        
-        for i, message in enumerate(messages):
+        for message in messages:
             if message["role"] in ["user", "assistant"]:
                 _content = message["content"]
                 if _content is not None:
@@ -377,10 +323,6 @@ async def body() -> None:
                         if "tool_calls" in message and message["tool_calls"]:
                             display_tool_calls(st.empty(), message["tool_calls"])
                         st.markdown(_content)
-                        
-                        # Add message timestamp if available
-                        if "timestamp" in message:
-                            st.caption(f"Sent at: {message['timestamp']}")
     else:
         st.info("💬 No messages yet. Upload an Excel file and start processing to see the conversation history.")
 
@@ -460,16 +402,15 @@ async def body() -> None:
                             data=file.read(),
                             file_name=f"processed_keywords_{session_id}.xlsx",
                             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                            use_container_width=True,
-                            key=f"download_{session_id}"  # Unique key to prevent conflicts
+                            use_container_width=True
                         )
                 
                 with col2:
-                    if st.button("🗑️ Clear Results", use_container_width=True, key=f"clear_{session_id}"):
+                    if st.button("🗑️ Clear Results", use_container_width=True):
                         try:
                             os.remove(session_excel_file)
-                            st.success("Results file cleared! Chat history preserved.")
-                            # Don't rerun to preserve chat history
+                            st.success("Results cleared!")
+                            st.rerun()
                         except Exception as e:
                             st.error(f"Error clearing results: {e}")
 
