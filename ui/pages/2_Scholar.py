@@ -138,7 +138,7 @@ async def body() -> None:
                     run_response = await scholar.arun(user_message, stream=True)
                     async for resp_chunk in run_response:
                         # Display tool calls if available
-                        if resp_chunk.tools and len(resp_chunk.tools) > 0:
+                        if hasattr(resp_chunk, 'tools') and resp_chunk.tools and len(resp_chunk.tools) > 0:
                             display_tool_calls(tool_calls_container, resp_chunk.tools)
 
                         # Display response
@@ -147,7 +147,7 @@ async def body() -> None:
                             resp_container.markdown(response)
 
                     # Add the response to the messages
-                    if scholar.run_response is not None:
+                    if scholar.run_response is not None and hasattr(scholar.run_response, 'tools'):
                         await add_message(agent_name, "assistant", response, scholar.run_response.tools)
                     else:
                         await add_message(agent_name, "assistant", response)

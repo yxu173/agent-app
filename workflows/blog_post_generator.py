@@ -8,7 +8,7 @@ from agno.storage.postgres import PostgresStorage
 from agno.tools.duckduckgo import DuckDuckGoTools
 from agno.tools.newspaper4k import Newspaper4kTools
 from agno.utils.log import logger
-from agno.workflow import RunEvent, RunResponse, Workflow
+from agno.workflow import RunResponse, Workflow
 from pydantic import BaseModel, Field
 
 from db.session import db_url
@@ -188,7 +188,7 @@ class BlogPostGenerator(Workflow):
         if use_cached_report:
             cached_blog_post = self.get_cached_blog_post(topic)
             if cached_blog_post:
-                yield RunResponse(content=cached_blog_post, event=RunEvent.workflow_completed)
+                yield RunResponse(content=cached_blog_post)
                 return
 
         # Search the web for articles on the topic
@@ -196,7 +196,6 @@ class BlogPostGenerator(Workflow):
         # If no search_results are found for the topic, end the workflow
         if search_results is None or len(search_results.articles) == 0:
             yield RunResponse(
-                event=RunEvent.workflow_completed,
                 content=f"Sorry, could not find any articles on the topic: {topic}",
             )
             return
