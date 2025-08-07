@@ -61,12 +61,14 @@ async def add_message(
     content: str,
     tool_calls: Optional[Union[List[Dict[str, Any]], List[ToolExecution]]] = None,
 ) -> None:
-    """Safely add a message to the Agent's session state."""
-    # if role == "user":
-    #     logger.info(f"👤  {role} → {agent_name}: {content}")
-    # else:
-    #     logger.info(f"🤖  {agent_name} → user: {content}")
+    """Safely add a message to the Agent's session state and persist to workflow session state if available."""
     st.session_state[agent_name]["messages"].append({"role": role, "content": content, "tool_calls": tool_calls})
+    # Persist messages to workflow session state if available
+    workflow = st.session_state[agent_name].get("workflow")
+    if workflow is not None and hasattr(workflow, "session_state"):
+        if "messages" not in workflow.session_state:
+            workflow.session_state["messages"] = []
+        workflow.session_state["messages"] = st.session_state[agent_name]["messages"]
 
 
 def display_tool_calls(tool_calls_container, tools):

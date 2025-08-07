@@ -8,6 +8,29 @@ from agno.tools.streamlit.components import check_password
 from agno.utils.log import logger
 from agno.workflow import Workflow
 
+import httpx
+
+API_BASE = "http://host.docker.internal:8000/v1/playground/workflows"
+WORKFLOW_ID = "excel-keyword-processor"
+
+async def api_list_sessions():
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(f"{API_BASE}/{WORKFLOW_ID}/sessions")
+        resp.raise_for_status()
+        return resp.json()
+
+async def api_get_session(session_id):
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(f"{API_BASE}/{WORKFLOW_ID}/sessions/{session_id}")
+        resp.raise_for_status()
+        return resp.json()
+
+async def api_delete_session(session_id):
+    async with httpx.AsyncClient() as client:
+        resp = await client.delete(f"{API_BASE}/{WORKFLOW_ID}/sessions/{session_id}")
+        resp.raise_for_status()
+        return resp.status_code == 204
+
 from ui.css import CUSTOM_CSS
 from ui.utils import (
     about_agno,
@@ -39,24 +62,12 @@ async def header():
 async def get_session_list():
     """Get list of available sessions for this workflow."""
     try:
-        workflow = get_excel_processor()
-        if not workflow.storage:
-            return []
-        
-        # Get all workflow sessions
-        workflow_sessions = workflow.storage.get_all_sessions()
-        if not workflow_sessions:
-            return []
-        
-        # Get session names if available, otherwise use IDs
-        sessions_list = []
-        for session in workflow_sessions:
-            session_id = session.session_id
-            session_name = session.session_data.get("session_name", None) if session.session_data else None
-            display_name = session_name if session_name else session_id
-            sessions_list.append({"id": session_id, "display_name": display_name})
-        
-        return sessions_list
+        sessions = await api_list_sessions()
+        # Format for selectbox
+        return [
+            {"id": s["session_id"], "display_name": s.get("title") or s["session_id"]}
+            for s in sessions
+        ]
     except Exception as e:
         logger.error(f"Error getting session list: {e}")
         return []
@@ -65,29 +76,17 @@ async def get_session_list():
 async def sidebar():
     """Display sidebar with session management."""
     st.sidebar.markdown("### 📊 Session Management")
-    
-    # Session naming
+
+    # Session naming (display only, no direct storage update)
     if workflow_name in st.session_state and "session_id" in st.session_state[workflow_name]:
         session_id = st.session_state[workflow_name]["session_id"]
         if session_id:
-            # Allow user to name the session
             session_name = st.sidebar.text_input(
                 "📝 Session Name",
                 value=f"Excel Analysis - {session_id[:8]}",
                 help="Give your session a descriptive name"
             )
-            
-            if st.sidebar.button("💾 Save Session Name"):
-                try:
-                    workflow = get_excel_processor()
-                    if workflow.storage:
-                        # Save session name to storage
-                        workflow.storage.update_session_data(session_id, {"session_name": session_name})
-                        st.sidebar.success("Session name saved!")
-                        st.rerun()
-                except Exception as e:
-                    st.sidebar.error(f"Error saving session name: {e}")
-    
+
     # Session list
     sessions = await get_session_list()
     if sessions:
@@ -96,34 +95,52 @@ async def sidebar():
             options=[s["display_name"] for s in sessions],
             help="Select a previous session to load"
         )
-        
+        selected_session_id = next(s["id"] for s in sessions if s["display_name"] == selected_session)
+
         if st.sidebar.button("🔄 Load Session"):
-            # Find the selected session ID
-            selected_session_id = next(s["id"] for s in sessions if s["display_name"] == selected_session)
-            # Load the selected session
+            if workflow_name not in st.session_state:
+                st.session_state[workflow_name] = {}
             st.session_state[workflow_name]["session_id"] = selected_session_id
+            st.session_state[workflow_name]["workflow"] = None
+            st.session_state[workflow_name]["messages"] = []  
             st.rerun()
+
+        # Add delete session button
+        if st.sidebar.button("🗑️ Delete Selected Session"):
+            try:
+                await api_delete_session(selected_session_id)
+                # If the deleted session is the current one, clear it from state
+                if (
+                    workflow_name in st.session_state and
+                    st.session_state[workflow_name].get("session_id") == selected_session_id
+                ):
+                    st.session_state[workflow_name]["session_id"] = None
+                    st.session_state[workflow_name]["workflow"] = None
+                st.sidebar.success("Session deleted!")
+                st.rerun()
+            except Exception as e:
+                st.sidebar.error(f"Error deleting session: {e}")
     else:
         st.sidebar.info("No previous sessions found")
-    
-    # Clear session button
+
+    # Clear session button (just clears UI state, not backend)
     if st.sidebar.button("🗑️ Clear Current Session"):
         if workflow_name in st.session_state:
             st.session_state[workflow_name] = {}
         st.rerun()
-    
+
     # Session info
     if workflow_name in st.session_state and "session_id" in st.session_state[workflow_name]:
         session_id = st.session_state[workflow_name]["session_id"]
         if session_id:
             st.sidebar.markdown(f"**Current Session:** {session_id}")
-            
+
             # Check if there are results for this session
             session_excel_file = f"tmp/session_keywords_{session_id}.xlsx"
             if os.path.exists(session_excel_file):
                 file_size = os.path.getsize(session_excel_file) / 1024  # KB
                 st.sidebar.markdown(f"**Results File:** {file_size:.1f} KB")
-                
+
                 # Download button in sidebar
                 with open(session_excel_file, "rb") as file:
                     st.sidebar.download_button(
@@ -139,34 +156,40 @@ async def body() -> None:
     # Initialize Workflow
     ####################################################################
     workflow: Workflow
-    if workflow_name not in st.session_state or st.session_state[workflow_name]["workflow"] is None:
-        logger.info("---*--- Creating Workflow ---*---")
+    if st.session_state[workflow_name].get("session_id") is None:
+        logger.info("---*--- Creating New Workflow Session ---*---")
         workflow = get_excel_processor()
+        try:
+            workflow.set_session_id()
+            session_id = workflow.load_session()
+            st.session_state[workflow_name]["workflow"] = workflow
+            st.session_state[workflow_name]["session_id"] = session_id
+            st.session_state[workflow_name]["messages"] = []
+        except Exception:
+            st.warning("Could not create Workflow session, is the database running?")
+            return
     else:
-        workflow = st.session_state[workflow_name]["workflow"]
-
-    ####################################################################
-    # Load Workflow Session from the database
-    ####################################################################
-    try:
-        workflow.set_session_id()
-        st.session_state[workflow_name]["session_id"] = workflow.load_session()
-    except Exception:
-        st.warning("Could not create Workflow session, is the database running?")
-        return
+        logger.info("---*--- Loading Existing Workflow Session ---*---")
+        workflow = get_excel_processor()
+        workflow.session_id = st.session_state[workflow_name]["session_id"]
+        st.session_state[workflow_name]["workflow"] = workflow
+        if hasattr(workflow, 'session_state') and "messages" in workflow.session_state:
+            st.session_state[workflow_name]["messages"] = workflow.session_state["messages"]
+        else:
+            st.session_state[workflow_name]["messages"] = []
 
     ####################################################################
     # File Upload Section
     ####################################################################
     st.markdown("### 📁 Upload Excel File")
-    
+
     # File upload with better UX
     uploaded_file = st.file_uploader(
         "Choose an Excel file (.xlsx, .xls)",
         type=['xlsx', 'xls'],
         help="Upload an Excel file containing keywords to analyze"
     )
-    
+
     if uploaded_file is not None:
         # Show file info
         col1, col2, col3 = st.columns(3)
@@ -176,14 +199,14 @@ async def body() -> None:
             st.metric("File Size", f"{len(uploaded_file.getvalue()) / 1024:.1f} KB")
         with col3:
             st.metric("File Type", uploaded_file.type)
-        
+
         # Show file preview (first few lines)
         try:
             import pandas as pd
             with tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx') as tmp_file:
                 tmp_file.write(uploaded_file.getvalue())
                 tmp_file_path = tmp_file.name
-            
+
             try:
                 df = pd.read_excel(tmp_file_path, nrows=5)
                 st.markdown("#### 📋 File Preview (First 5 rows)")
@@ -202,16 +225,16 @@ async def body() -> None:
     # Configuration Section
     ####################################################################
     st.markdown("### ⚙️ Configuration")
-    
+
     col1, col2 = st.columns(2)
-    
+
     with col1:
         niche = st.text_input(
             "🎯 Niche/Topic",
             value="technology",
             help="The niche or topic for keyword analysis (e.g., 'health', 'finance', 'technology')"
         )
-    
+
     with col2:
         chunk_size = st.selectbox(
             "📊 Chunk Size",
@@ -225,13 +248,13 @@ async def body() -> None:
     ####################################################################
     if uploaded_file is not None:
         st.markdown("### 🚀 Process File")
-        
+
         # Show processing options
         with st.expander("⚙️ Processing Options", expanded=False):
             st.markdown(f"**Niche:** {niche}")
             st.markdown(f"**Chunk Size:** {chunk_size} rows")
             st.markdown(f"**File:** {uploaded_file.name}")
-        
+
         if st.button("🔍 Analyze Keywords", type="primary", use_container_width=True):
             # Save uploaded file to temporary location
             with tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx') as tmp_file:
@@ -254,7 +277,7 @@ async def body() -> None:
                     # Create container for tool calls
                     tool_calls_container = st.empty()
                     resp_container = st.empty()
-                    
+
                     with st.spinner(":thinking_face: Analyzing keywords..."):
                         response = ""
                         try:
@@ -264,7 +287,7 @@ async def body() -> None:
                                 niche=niche,
                                 chunk_size=chunk_size
                             )
-                            
+
                             for resp_chunk in run_response:
                                 # Display tool calls if available
                                 if hasattr(resp_chunk, 'tools') and resp_chunk.tools and len(resp_chunk.tools) > 0:
@@ -280,10 +303,10 @@ async def body() -> None:
                                 await add_message(workflow_name, "assistant", response, workflow.run_response.tools)
                             else:
                                 await add_message(workflow_name, "assistant", response)
-                            
+
                             # Show success message
                             st.success("✅ Processing completed successfully!")
-                                
+
                         except Exception as e:
                             logger.error(f"Error during workflow run: {str(e)}", exc_info=True)
                             error_message = f"Sorry, I encountered an error: {str(e)}"
@@ -304,13 +327,13 @@ async def body() -> None:
     # Display workflow messages
     ####################################################################
     st.markdown("### 💬 Chat History")
-    
+
     # Show session info if available
     if workflow_name in st.session_state and "session_id" in st.session_state[workflow_name]:
         session_id = st.session_state[workflow_name]["session_id"]
         if session_id:
             st.info(f"📊 **Current Session:** {session_id}")
-    
+
     # Display all messages in chat format
     messages = st.session_state[workflow_name]["messages"]
     if messages:
@@ -332,17 +355,17 @@ async def body() -> None:
     with st.expander("📋 Instructions"):
         st.markdown("""
         **How to use this Excel Processor:**
-        
+
         1. **Upload an Excel file** containing keywords in the first column
         2. **Set the niche/topic** for your keywords (e.g., 'health', 'finance', 'technology')
         3. **Choose chunk size** based on your file size (larger files work better with bigger chunks)
         4. **Click 'Analyze Keywords'** to start processing
-        
+
         **Expected Excel Format:**
         - First column should contain keywords
         - Optional second column for categories
         - Sheet name should be "CATEGORY" (or it will use the first available sheet)
-        
+
         **What the processor does:**
         - Analyzes keywords for SEO value
         - Identifies valuable keywords for content creation
@@ -359,11 +382,11 @@ async def body() -> None:
             session_excel_file = f"tmp/session_keywords_{session_id}.xlsx"
             if os.path.exists(session_excel_file):
                 st.markdown("### 📊 Results Summary")
-                
+
                 try:
                     import pandas as pd
                     df = pd.read_excel(session_excel_file)
-                    
+
                     col1, col2, col3 = st.columns(3)
                     with col1:
                         st.metric("Total Keywords", len(df))
@@ -371,15 +394,15 @@ async def body() -> None:
                         st.metric("File Size", f"{os.path.getsize(session_excel_file) / 1024:.1f} KB")
                     with col3:
                         st.metric("Session ID", session_id[:8])
-                    
+
                     # Show sample results
                     if len(df) > 0:
                         st.markdown("#### 📋 Sample Results")
                         st.dataframe(df.head(10), use_container_width=True)
-                        
+
                         if len(df) > 10:
                             st.info(f"Showing first 10 of {len(df)} keywords. Download the full file to see all results.")
-                
+
                 except Exception as e:
                     st.warning(f"Could not read results file: {e}")
 
@@ -392,9 +415,9 @@ async def body() -> None:
             session_excel_file = f"tmp/session_keywords_{session_id}.xlsx"
             if os.path.exists(session_excel_file):
                 st.markdown("### 📥 Download Results")
-                
+
                 col1, col2 = st.columns(2)
-                
+
                 with col1:
                     with open(session_excel_file, "rb") as file:
                         st.download_button(
@@ -404,7 +427,7 @@ async def body() -> None:
                             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                             use_container_width=True
                         )
-                
+
                 with col2:
                     if st.button("🗑️ Clear Results", use_container_width=True):
                         try:
@@ -416,7 +439,9 @@ async def body() -> None:
 
 
 async def main():
-    await initialize_workflow_session_state(workflow_name)
+    # Only initialize if not already present
+    if workflow_name not in st.session_state:
+        await initialize_workflow_session_state(workflow_name)
     await sidebar()
     await header()
     await body()
