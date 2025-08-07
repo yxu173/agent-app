@@ -106,16 +106,18 @@ async def sidebar():
             st.rerun()
 
         # Add delete session button
-        if st.sidebar.button("🗑️ Delete Selected Session"):
+        if st.sidebar.button("🗑️ Delete Selected Session", key="delete_selected_session"):
             try:
                 await api_delete_session(selected_session_id)
-                # If the deleted session is the current one, clear it from state
+                # If the deleted session is the current one, clear all related state
                 if (
                     workflow_name in st.session_state and
                     st.session_state[workflow_name].get("session_id") == selected_session_id
                 ):
                     st.session_state[workflow_name]["session_id"] = None
                     st.session_state[workflow_name]["workflow"] = None
+                    st.session_state[workflow_name]["messages"] = []
+                    st.session_state[workflow_name]["just_deleted"] = True
                 st.sidebar.success("Session deleted!")
                 st.rerun()
             except Exception as e:
@@ -156,6 +158,12 @@ async def body() -> None:
     # Initialize Workflow
     ####################################################################
     workflow: Workflow
+    # If just deleted, show message and do not create a new session
+    if st.session_state[workflow_name].get("just_deleted"):
+        st.info("Session deleted. Please select or create a new session.")
+        st.session_state[workflow_name]["just_deleted"] = False
+        return
+
     if st.session_state[workflow_name].get("session_id") is None:
         logger.info("---*--- Creating New Workflow Session ---*---")
         workflow = get_excel_processor()
