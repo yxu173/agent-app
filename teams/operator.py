@@ -3,9 +3,11 @@ from typing import List, Optional
 
 from teams.finance_researcher import get_finance_researcher_team
 from teams.multi_language import get_multi_language_team
+from teams.journalism_team import get_journalism_team
 
 
 class TeamType(Enum):
+    JOURNALISM = "journalism"
     FINANCE_RESEARCHER = "finance-researcher"
     MULTI_LANGUAGE = "multi-language"
 
@@ -26,5 +28,9 @@ def get_team(
         return get_finance_researcher_team(
             model_id=model_id, user_id=user_id, session_id=session_id, debug_mode=debug_mode
         )
-    else:
+    elif team_id == TeamType.JOURNALISM:
+        return get_journalism_team(
+            model_id=model_id, user_id=user_id, session_id=session_id, debug_mode=debug_mode
+        )
+    elif team_id == TeamType.MULTI_LANGUAGE:
         return get_multi_language_team(model_id=model_id, user_id=user_id, session_id=session_id, debug_mode=debug_mode)

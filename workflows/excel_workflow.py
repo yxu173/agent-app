@@ -630,14 +630,14 @@ The instructions are finished, so after analyzing and understanding them well an
                     session_keywords = []
 
             if session_keywords:
-                download_url = self.get_download_url(session_id)
+                #download_url = self.get_download_url(session_id)
                 result = f"🎉 **Session Complete!**\n\n"
                 result += f"📊 **Summary:**\n"
                 result += f"• Total valuable keywords processed: {len(session_keywords)}\n"
                 result += f"• File saved: {session_excel_file}\n"
                 result += f"• File size: {self.get_file_size(session_excel_file)} MB\n\n"
-                result += f"📥 **Download your results:**\n"
-                result += f"🔗 {download_url}\n\n"
+                #result += f"📥 **Download your results:**\n"
+                #result += f"🔗 {download_url}\n\n"
                 result += f"💡 **What's in the file:**\n"
                 result += f"• Keyword: The valuable keyword\n"
                 result += f"• Reason: Why this keyword was selected as valuable\n\n"
