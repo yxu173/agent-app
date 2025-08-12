@@ -804,9 +804,16 @@ The instructions are finished, so after analyzing and understanding them well an
 ''')
 
 
-def get_excel_processor(debug_mode: bool = True) -> ExcelProcessor:
+def get_excel_processor(
+    user_id: Optional[str] = None,
+    model_id: Optional[str] = None,
+    session_id: Optional[str] = None,
+    debug_mode: bool = True
+) -> ExcelProcessor:
     return ExcelProcessor(
         workflow_id="excel-keyword-processor",
+        user_id=user_id,
+        session_id=session_id,
         storage=SqliteStorage(
             table_name="excel_processor_workflows",
             db_file="tmp/excel_processor_agent.db",

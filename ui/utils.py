@@ -2,6 +2,7 @@ from typing import Any, Callable, Dict, List, Optional, Union
 
 import streamlit as st
 from agno.agent import Agent
+from agno.workflow import Workflow
 from agno.document import Document
 from agno.document.reader import Reader
 from agno.document.reader.csv_reader import CSVReader
@@ -43,7 +44,7 @@ async def initialize_workflow_session_state(workflow_name: str):
 async def selected_model() -> str:
     """Display a model selector in the sidebar."""
     model_options = {
-        "gpt-4o": "gpt-4o",
+        "gpt-4o-mini": "gpt-4o-mini",
         "o3-mini": "o3-mini",
     }
     selected_model = st.sidebar.selectbox(
@@ -233,6 +234,52 @@ async def knowledge_widget(agent_name: str, agent: Agent) -> None:
         if st.sidebar.button("🗑️ Delete Knowledge"):
             agent.knowledge.delete()
             st.sidebar.success("Knowledge deleted!")
+
+
+async def session_selector_workflow(workflow_name: str, workflow: Workflow, get_workflow: Callable, user_id: str, model_id: str) -> None:
+    """Display a session selector in the sidebar, if a new session is selected, the workflow is restarted with the new session."""
+
+    if not workflow or not workflow.storage:
+        return
+
+    try:
+        # Get all workflow sessions.
+        workflow_sessions = workflow.storage.get_all_sessions()
+        if not workflow_sessions:
+            st.sidebar.info("No saved sessions found.")
+            return
+
+        # Get session names if available, otherwise use IDs.
+        sessions_list = []
+        for session in workflow_sessions:
+            session_id = session.session_id
+            session_name = session.session_data.get("session_name", None) if session.session_data else None
+            display_name = session_name if session_name else session_id
+            sessions_list.append({"id": session_id, "display_name": display_name})
+
+        # Display session selector.
+        st.sidebar.markdown("#### 💬 Session")
+        selected_session = st.sidebar.selectbox(
+            "Session",
+            options=[s["display_name"] for s in sessions_list],
+            key="session_selector",
+            label_visibility="collapsed",
+        )
+
+        # Find the selected session ID.
+        selected_session_id = next(s["id"] for s in sessions_list if s["display_name"] == selected_session)
+        # Update the workflow session if it has changed.
+        if st.session_state[workflow_name]["session_id"] != selected_session_id:
+            logger.info(f"---*--- Loading {workflow_name} session: {selected_session_id} ---*---")
+            st.session_state[workflow_name]["workflow"] = get_workflow(
+                user_id=user_id,
+                model_id=model_id,
+                session_id=selected_session_id,
+            )
+            st.rerun()
+    except Exception as e:
+        logger.error(f"Error in session selector: {str(e)}")
+        st.sidebar.error("Failed to load sessions")
 
 
 async def session_selector(agent_name: str, agent: Agent, get_agent: Callable, user_id: str, model_id: str) -> None:

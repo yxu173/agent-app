@@ -8,35 +8,14 @@ from agno.tools.streamlit.components import check_password
 from agno.utils.log import logger
 from agno.workflow import Workflow
 
-import httpx
-
-API_BASE = "http://host.docker.internal:8000/v1/playground/workflows"
-WORKFLOW_ID = "excel-keyword-processor"
-
-async def api_list_sessions():
-    async with httpx.AsyncClient() as client:
-        resp = await client.get(f"{API_BASE}/{WORKFLOW_ID}/sessions")
-        resp.raise_for_status()
-        return resp.json()
-
-async def api_get_session(session_id):
-    async with httpx.AsyncClient() as client:
-        resp = await client.get(f"{API_BASE}/{WORKFLOW_ID}/sessions/{session_id}")
-        resp.raise_for_status()
-        return resp.json()
-
-async def api_delete_session(session_id):
-    async with httpx.AsyncClient() as client:
-        resp = await client.delete(f"{API_BASE}/{WORKFLOW_ID}/sessions/{session_id}")
-        resp.raise_for_status()
-        return resp.status_code == 204
-
 from ui.css import CUSTOM_CSS
 from ui.utils import (
     about_agno,
     add_message,
     display_tool_calls,
     initialize_workflow_session_state,
+    selected_model,
+    session_selector_workflow,
 )
 from workflows.excel_workflow import get_excel_processor
 
@@ -59,77 +38,16 @@ async def header():
     )
 
 
-async def get_session_list():
-    """Get list of available sessions for this workflow."""
-    try:
-        sessions = await api_list_sessions()
-        # Format for selectbox
-        return [
-            {"id": s["session_id"], "display_name": s.get("title") or s["session_id"]}
-            for s in sessions
-        ]
-    except Exception as e:
-        logger.error(f"Error getting session list: {e}")
-        return []
-
-
-async def sidebar():
-    """Display sidebar with session management."""
+async def sidebar(workflow: Workflow):
+    """Display sidebar with session management using the new session_selector_workflow."""
     st.sidebar.markdown("### 📊 Session Management")
 
-    # Session naming (display only, no direct storage update)
-    if workflow_name in st.session_state and "session_id" in st.session_state[workflow_name]:
-        session_id = st.session_state[workflow_name]["session_id"]
-        if session_id:
-            session_name = st.sidebar.text_input(
-                "📝 Session Name",
-                value=f"Excel Analysis - {session_id[:8]}",
-                help="Give your session a descriptive name"
-            )
+    # Model selector
+    model_id = await selected_model()
 
-    # Session list
-    sessions = await get_session_list()
-    if sessions:
-        selected_session = st.sidebar.selectbox(
-            "Choose Session",
-            options=[s["display_name"] for s in sessions],
-            help="Select a previous session to load"
-        )
-        selected_session_id = next(s["id"] for s in sessions if s["display_name"] == selected_session)
-
-        if st.sidebar.button("🔄 Load Session"):
-            if workflow_name not in st.session_state:
-                st.session_state[workflow_name] = {}
-            st.session_state[workflow_name]["session_id"] = selected_session_id
-            st.session_state[workflow_name]["workflow"] = None
-            st.session_state[workflow_name]["messages"] = []  
-            st.rerun()
-
-        # Add delete session button
-        if st.sidebar.button("🗑️ Delete Selected Session", key="delete_selected_session"):
-            try:
-                await api_delete_session(selected_session_id)
-                # If the deleted session is the current one, clear all related state
-                if (
-                    workflow_name in st.session_state and
-                    st.session_state[workflow_name].get("session_id") == selected_session_id
-                ):
-                    st.session_state[workflow_name]["session_id"] = None
-                    st.session_state[workflow_name]["workflow"] = None
-                    st.session_state[workflow_name]["messages"] = []
-                    st.session_state[workflow_name]["just_deleted"] = True
-                st.sidebar.success("Session deleted!")
-                st.rerun()
-            except Exception as e:
-                st.sidebar.error(f"Error deleting session: {e}")
-    else:
-        st.sidebar.info("No previous sessions found")
-
-    # Clear session button (just clears UI state, not backend)
-    if st.sidebar.button("🗑️ Clear Current Session"):
-        if workflow_name in st.session_state:
-            st.session_state[workflow_name] = {}
-        st.rerun()
+    # Session selector
+    if workflow is not None and hasattr(workflow, 'storage') and workflow.storage is not None:
+        await session_selector_workflow(workflow_name, workflow, get_excel_processor, "default_user", model_id)
 
     # Session info
     if workflow_name in st.session_state and "session_id" in st.session_state[workflow_name]:
@@ -152,39 +70,62 @@ async def sidebar():
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                     )
 
+    # Clear session button (just clears UI state, not backend)
+    if st.sidebar.button("🗑️ Clear Current Session"):
+        if workflow_name in st.session_state:
+            st.session_state[workflow_name] = {}
+        st.rerun()
+
 
 async def body() -> None:
     ####################################################################
     # Initialize Workflow
     ####################################################################
     workflow: Workflow
-    # If just deleted, show message and do not create a new session
-    if st.session_state[workflow_name].get("just_deleted"):
-        st.info("Session deleted. Please select or create a new session.")
-        st.session_state[workflow_name]["just_deleted"] = False
-        return
-
-    if st.session_state[workflow_name].get("session_id") is None:
+    if (
+        workflow_name not in st.session_state
+        or st.session_state[workflow_name]["workflow"] is None
+    ):
         logger.info("---*--- Creating New Workflow Session ---*---")
-        workflow = get_excel_processor()
         try:
+            workflow = get_excel_processor()
+            # Set session_id before loading session
             workflow.set_session_id()
-            session_id = workflow.load_session()
             st.session_state[workflow_name]["workflow"] = workflow
-            st.session_state[workflow_name]["session_id"] = session_id
-            st.session_state[workflow_name]["messages"] = []
-        except Exception:
-            st.warning("Could not create Workflow session, is the database running?")
+            logger.info(f"Workflow created with session_id: {workflow.session_id}")
+        except Exception as e:
+            logger.error(f"Error creating workflow: {e}")
+            st.error(f"Error creating workflow: {e}")
             return
     else:
-        logger.info("---*--- Loading Existing Workflow Session ---*---")
-        workflow = get_excel_processor()
-        workflow.session_id = st.session_state[workflow_name]["session_id"]
-        st.session_state[workflow_name]["workflow"] = workflow
-        if hasattr(workflow, 'session_state') and "messages" in workflow.session_state:
-            st.session_state[workflow_name]["messages"] = workflow.session_state["messages"]
-        else:
-            st.session_state[workflow_name]["messages"] = []
+        workflow = st.session_state[workflow_name]["workflow"]
+
+    ####################################################################
+    # Load Workflow Session from the database
+    ####################################################################
+    try:
+        st.session_state[workflow_name]["session_id"] = workflow.load_session()
+        logger.info(f"Session loaded with ID: {st.session_state[workflow_name]['session_id']}")
+    except Exception as e:
+        logger.error(f"Error loading session: {e}")
+        st.warning("Could not create Workflow session, is the database running?")
+        return
+
+    ####################################################################
+    # Initialize messages if not present
+    ####################################################################
+    if "messages" not in st.session_state[workflow_name]:
+        st.session_state[workflow_name]["messages"] = []
+
+
+    ####################################################################
+    # Call sidebar with the initialized workflow
+    ####################################################################
+    if workflow is not None:
+        await sidebar(workflow)
+    else:
+        st.error("Workflow initialization failed")
+        return
 
     ####################################################################
     # File Upload Section
@@ -450,7 +391,6 @@ async def main():
     # Only initialize if not already present
     if workflow_name not in st.session_state:
         await initialize_workflow_session_state(workflow_name)
-    await sidebar()
     await header()
     await body()
     await about_agno()
