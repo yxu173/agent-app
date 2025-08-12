@@ -1,107 +1,31 @@
-import os
 from textwrap import dedent
 from typing import Optional
 
 from agno.agent import Agent
 from agno.models.openai import OpenAIChat
-from agno.models.openrouter import OpenRouter
+from agno.models.google import Gemini
 from agno.storage.postgres import PostgresStorage
 from agno.team.team import Team
 from agno.tools.duckduckgo import DuckDuckGoTools
 from agno.tools.tavily import TavilyTools
 from agno.utils.log import logger
-from rich.pretty import pprint
-# from agno.tools.newspaper4k import Newspaper4kTools  # Uncomment if available
 
 from db.session import db_url
 from teams.settings import team_settings
-
-def print_team_metrics(team: Team, run_title: str = "Team Run"):
-    """Print aggregated team leader metrics after every response."""
-    print("\n" + "="*80)
-    print(f"📊 {run_title} - AGGREGATED TEAM LEADER METRICS")
-    print("="*80)
-    
-    if hasattr(team, 'run_response') and team.run_response:
-        print("\n🔍 Team Leader Run Metrics:")
-        pprint(team.run_response.metrics)
-        
-        if hasattr(team, 'session_metrics') and team.session_metrics:
-            print("\n📈 Team Leader Session Metrics:")
-            pprint(team.session_metrics)
-        
-        if hasattr(team, 'full_team_session_metrics') and team.full_team_session_metrics:
-            print("\n🌐 Full Team Session Metrics (including all members):")
-            pprint(team.full_team_session_metrics)
-        
-        # Print individual member metrics if available
-        if hasattr(team.run_response, 'member_responses') and team.run_response.member_responses:
-            print("\n👥 Individual Team Member Metrics:")
-            for i, member_response in enumerate(team.run_response.member_responses, 1):
-                print(f"\n--- Member {i} Metrics ---")
-                if hasattr(member_response, 'metrics'):
-                    pprint(member_response.metrics)
-                else:
-                    print("No metrics available for this member")
-    else:
-        print("⚠️  No run response available yet. Run the team first to see metrics.")
-    
-    print("="*80 + "\n")
-
-def print_current_metrics(team: Team):
-    """Print current metrics for the team (can be called manually)."""
-    print_team_metrics(team, "Current Team Status")
-
-def print_detailed_metrics(team: Team):
-    """Print detailed metrics breakdown including per-message and per-tool metrics."""
-    print("\n" + "="*80)
-    print("🔍 DETAILED METRICS BREAKDOWN")
-    print("="*80)
-    
-    if hasattr(team, 'run_response') and team.run_response:
-        # Print per-message metrics
-        if hasattr(team.run_response, 'messages') and team.run_response.messages:
-            print("\n📝 Per-Message Metrics:")
-            for i, message in enumerate(team.run_response.messages, 1):
-                if message.role == "assistant":
-                    print(f"\n--- Message {i} ---")
-                    if hasattr(message, 'content') and message.content:
-                        print(f"Content: {message.content[:100]}...")
-                    if hasattr(message, 'tool_calls') and message.tool_calls:
-                        print(f"Tool calls: {len(message.tool_calls)}")
-                    if hasattr(message, 'metrics') and message.metrics:
-                        pprint(message.metrics)
-        
-        # Print per-tool execution metrics
-        if hasattr(team.run_response, 'tools') and team.run_response.tools:
-            print("\n🛠️  Per-Tool Execution Metrics:")
-            for i, tool_exec in enumerate(team.run_response.tools, 1):
-                print(f"\n--- Tool Execution {i} ---")
-                if hasattr(tool_exec, 'metrics') and tool_exec.metrics:
-                    pprint(tool_exec.metrics)
-                else:
-                    print("No metrics available for this tool execution")
-    
-    print("="*80 + "\n")
 
 # --- Research Planner Agent ---
 research_planner = Agent(
     name="Research Planner",
     agent_id="research-planner",
     role="Breaks research queries into structured subtopics and assigns relevant sources",
-    model=OpenAIChat(id="gpt-5-mini"),
+    model=Gemini(id="gemini-2.5-pro", api_key=team_settings.google_api_key),
     tools=[DuckDuckGoTools()],
     add_datetime_to_instructions=True,
     instructions=dedent("""
-        - Use the duckduckgo tool to search the web for the most relevant information
-        - Decompose research queries into well-structured subtopics covering all key aspects.
-        - Ensure logical flow and coverage of historical, current, and future perspectives.
-        - Identify and recommend the most credible sources for each subtopic.
-        - Prioritize primary research, expert opinions, and authoritative publications.
-        - Generate a detailed research roadmap specifying:
-          1. Subtopics with clear focus areas.
-          2. Recommended sources (websites, papers, reports).
-          3. Suggested research methodologies (quantitative, qualitative, case studies).
+        - Use the duckduckgo tool to search the web for the most relevant, up-to-date information.
+        - Break down the research query into clear, actionable subtopics.
+        - For each subtopic, recommend the best sources and research methods.
+        - Output a structured research plan for the next agent to follow.
     """),
     markdown=True,
 )
@@ -110,23 +34,19 @@ research_planner = Agent(
 research_agent = Agent(
     name="Research Agent",
     agent_id="research-agent",
-    model=OpenAIChat(id="gpt-5-mini"),
-    tools=[TavilyTools(api_key="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")],
+    model=Gemini(id="gemini-2.5-pro", api_key=team_settings.google_api_key),
+    tools=[TavilyTools(api_key=team_settings.tavily_api_key), DuckDuckGoTools()],
     add_datetime_to_instructions=True,
     description="An expert researcher conducting deep web searches and verifying sources.",
     instructions=dedent("""
-        - Go through the research plan
-        - Perform relevant web searches based on the planned topics and resources
-        - Prioritize recent and authoritative sources.
-        - Identify key stakeholders and perspectives
-        - Use the tavily tool to search the web for the most relevant information
-        - Search with the query "latest news on {topic}"
-        - Search with the query "latest research on {topic}"
-        - Search with the query "latest reports on {topic}"
-        - Search with the query "latest articles on {topic}"
-        - Search with the query "latest news on {topic}"
-        - Search with the query "latest research on {topic}"
-        - Search with the query "latest reports on {topic}"
+        - Read the research plan from the previous agent.
+        - For each subtopic, perform targeted web searches using the tavily tool first.
+        - If tavily fails, fall back to duckduckgo for web searches.
+        - Summarize key findings, cite all sources, and highlight any gaps or uncertainties.
+        - If no relevant data is found, explicitly state: 'No relevant data found for this subtopic, but here is a summary of what was attempted.'
+        - If both tools fail, provide a detailed explanation of the errors and what was attempted.
+        - Output a research summary for the analysis agent. Always return a summary, even if no data is found or tools fail.
+        - Never fail silently - always provide some form of output to continue the workflow.
     """),
     expected_output=dedent("""
         # Research Summary Report
@@ -161,6 +81,11 @@ research_agent = Agent(
         - [{Source 2 Name}]({URL})
         - (...list all sources with links...)
         
+        ### Tool Status & Fallbacks
+        - **Primary Tool (Tavily):** {Status - Success/Failed with explanation}
+        - **Fallback Tool (DuckDuckGo):** {Status - Used/Not needed}
+        - **Research Methodology:** {Explanation of how research was conducted}
+        
         ---
         Research conducted by AI Investigative Journalist
         Compiled on: {current_date} at {current_time}
@@ -173,13 +98,14 @@ research_agent = Agent(
 analysis_agent = Agent(
     name="Analysis Agent",
     agent_id="analysis-agent",
-    model=OpenAIChat(id="moonshotai/kimi-k2:free",base_url="https://openrouter.ai/api/v1", api_key="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"),
+    model=OpenAIChat(id="openai/gpt-oss-120b",base_url="https://openrouter.ai/api/v1", api_key=team_settings.openrouter_api_key),
     add_datetime_to_instructions=True,
     description="A data analyst identifying trends, evaluating viewpoints, and spotting inconsistencies.",
     instructions=dedent("""
-        - Analyze collected research for patterns, trends, and conflicting viewpoints.
-        - Evaluate the credibility of sources and filter out misinformation.
-        - Summarize findings with statistical and contextual backing.
+        - Read the research summary from the previous agent.
+        - Analyze findings for patterns, trends, and credibility.
+        - Identify conflicting viewpoints and filter out unreliable information.
+        - Output a concise analysis report for the writing agent.
     """),
     expected_output=dedent("""A critical analysis report in detail with all the required citations and sources in a proper format"""),
     markdown=True,
@@ -189,13 +115,14 @@ analysis_agent = Agent(
 writing_agent = Agent(
     name="Writing Agent",
     agent_id="writing-agent",
-    model=OpenAIChat(id="gpt-5-mini"),
+    model=OpenAIChat(id="moonshotai/kimi-k2",base_url="https://openrouter.ai/api/v1", api_key=team_settings.openrouter_api_key),
     add_datetime_to_instructions=True,
     description="A professional journalist specializing in NYT-style reporting.",
     instructions=dedent("""
-        - Write a compelling, well-structured article based on the analysis.
-        - Maintain journalistic integrity, objectivity, and balance.
-        - Use clear, engaging language and provide necessary background.
+        - Read the analysis report from the previous agent.
+        - Write a clear, engaging article based on the analysis.
+        - Ensure journalistic integrity, objectivity, and proper background.
+        - Output a draft article for the editor agent.
     """),
     markdown=True,
     show_tool_calls=True,
@@ -205,15 +132,14 @@ writing_agent = Agent(
 editor_agent = Agent(
     name="Editor Agent",
     agent_id="editor-agent",
-model=OpenAIChat(id="moonshotai/kimi-k2:free",base_url="https://openrouter.ai/api/v1", api_key="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"),
+    model=Gemini(id="gemini-2.5-pro", api_key=team_settings.google_api_key),
         add_datetime_to_instructions=True,
     description="An editorial assistant verifying accuracy, coherence, and readability.",
     instructions=dedent("""
-        Check the article generated
-        - Verify all facts, statistics, and quotes based on the research analysis report.
-        - Ensure smooth narrative flow and logical structure.
-        - Check grammar, clarity, and engagement level.
-        - Highlight any areas needing further verification or revision.
+        - Read the draft article from the previous agent.
+        - Verify facts, coherence, and readability.
+        - Suggest improvements and highlight any issues.
+        - Output the final, edited article with all citations.
     """),
     expected_output=dedent("""
     The same report but with editing instructions in brackets wherever its required
@@ -230,14 +156,12 @@ def get_journalism_team(
     session_id: Optional[str] = None,
     debug_mode: bool = True,
 ):
-    #model_id = "gpt-5-mini"
-
     try:
-        return Team(
+        team = Team(
             name="AI Journalism Team",
             team_id="journalism-team",
             mode="coordinate",
-            model=OpenAIChat(id="moonshotai/kimi-k2:free",base_url="https://openrouter.ai/api/v1", api_key="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"),
+            model=OpenAIChat(id="gpt-5-mini"),
     
             members=[
                 research_planner,
@@ -248,23 +172,27 @@ def get_journalism_team(
             ],
             description="A multi-agent journalism team conducting investigative reporting collaboratively.",
             instructions=dedent("""
-                You are responsible for executing a structured research workflow.
-                
-                Follow this exact sequence:
-                1. **Research Planner**: First, use the research-planner to break down the query into structured subtopics and identify relevant sources.
-                2. **Research Agent**: Then, use the research-agent to conduct web searches based on the research plan and gather information.
-                3. **Analysis Agent**: Next, use the analysis-agent to analyze the collected research for patterns, trends, and credibility.
-                4. **Writing Agent**: Then, use the writing-agent to write a compelling, well-structured article based on the analysis.
-                5. **Editor Agent**: Finally, use the editor-agent to verify accuracy, coherence, and readability of the final article.
-                
-                - Ensure that the output from one agent flows into the next.
-                - Each agent should build upon the work of the previous agent.
-                - Finally, produce a well-researched, structured final report based on the output from the editor_agent with proper citations.
-            """),
+IMPORTANT: For every user query, you must always call all five agents in order, one after the other, for every user query, no matter what. Do not stop after any agent except the Editor Agent.
+
+1. Transfer the task to the Research Planner and wait for their output. After completion, print: "Completed step 1, now calling Research Agent."
+2. Take the Research Planner's output and transfer it to the Research Agent. Wait for their output. After completion, print: "Completed step 2, now calling Analysis Agent."
+3. Take the Research Agent's output and transfer it to the Analysis Agent. Wait for their output. After completion, print: "Completed step 3, now calling Writing Agent."
+4. Take the Analysis Agent's output and transfer it to the Writing Agent. Wait for their output. After completion, print: "Completed step 4, now calling Editor Agent."
+5. Take the Writing Agent's output and transfer it to the Editor Agent. Wait for their output. After completion, print: "Completed step 5, returning final result."
+6. Only after the Editor Agent has completed, return the final result to the user.
+
+**Rules:**
+- You must use the `transfer_task_to_member` tool for each step, and never skip a member.
+- Always pass the previous member's output as the input to the next member.
+- Do not stop after the first agent, or after any agent except the Editor Agent; always proceed through all agents in order.
+- Do not attempt to answer the user query yourself.
+- Do not summarize or modify the outputs between steps; just pass them along.
+- If an agent provides an error message or indicates failure, still pass that output to the next agent - they should handle it gracefully.
+- After each agent completes, print a log line: "Completed step X, now calling [next agent]."
+- You must always call all five agents in order, one after the other, for every user query, no matter what.
+- If an agent fails to provide any output at all, use a default message like "Agent [Name] encountered an error but workflow continues" and proceed to the next agent.
+"""),
             success_criteria="A comprehensive, well-researched, and professionally written article with proper citations and editorial review.",
-            enable_agentic_context=True,
-            share_member_interactions=True,
-            #show_members_responses=True,
             add_datetime_to_instructions=True,
             markdown=True,
             enable_team_history=True,
@@ -318,39 +246,7 @@ def get_journalism_team(
             user_id=user_id,
         )
         
-        # Add metrics printing functionality
-        original_run = team.run
-        
-        def run_with_metrics(*args, **kwargs):
-            """Wrapper to automatically print metrics after every team run."""
-            try:
-                # Run the team
-                result = original_run(*args, **kwargs)
-                
-                # Print metrics after the run
-                print_team_metrics(team, "Journalism Team Run")
-                
-                return result
-            except Exception as e:
-                logger.error(f"Error in team run: {e}")
-                # Still try to print metrics if available
-                if hasattr(team, 'run_response') and team.run_response:
-                    print_team_metrics(team, "Journalism Team Run (Error Recovery)")
-                raise
-        
-        # Replace the run method with our metrics-enabled version
-        team.run = run_with_metrics
-        
         return team
     except Exception as e:
         logger.error(f"Error creating journalism team: {e}")
         raise
-
-def get_journalism_team_with_metrics(
-    model_id: Optional[str] = None,
-    user_id: Optional[str] = None,
-    session_id: Optional[str] = None,
-    debug_mode: bool = True,
-):
-    """Get journalism team with automatic metrics printing enabled."""
-    return get_journalism_team(model_id, user_id, session_id, debug_mode)
