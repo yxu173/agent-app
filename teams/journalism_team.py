@@ -15,12 +15,12 @@ from agno.tools.newspaper4k import Newspaper4kTools
 from db.session import db_url
 from teams.settings import team_settings
 
-# --- Query Classification Agent (NEW) ---
+# --- Query Classification Agent ---
 query_classifier = Agent(
     name="Query Classifier",
     agent_id="query-classifier",
     role="Classifies queries and determines appropriate research depth",
-    model=Gemini(id="gemini-2.5-pro", api_key=team_settings.google_api_key),
+    model=OpenAIChat(id="z-ai/glm-4-32b", base_url="https://openrouter.ai/api/v1", api_key=team_settings.openrouter_api_key),
     add_datetime_to_instructions=True,
     instructions=dedent("""
         CRITICAL: You are the first agent in the pipeline. Your job is to classify the query and set the research depth.
@@ -49,7 +49,7 @@ query_classifier = Agent(
     markdown=True,
 )
 
-# --- Optimized Research Planner Agent ---
+# --- Research Planner Agent ---
 research_planner = Agent(
     name="Research Planner",
     agent_id="research-planner",
@@ -86,11 +86,11 @@ research_planner = Agent(
     markdown=True,
 )
 
-# --- Enhanced Research Agent ---
+# --- Research Agent ---
 research_agent = Agent(
     name="Research Agent",
     agent_id="research-agent",
-    model=Gemini(id="gemini-2.5-pro", api_key=team_settings.google_api_key),
+    model=OpenAIChat(id="google/gemini-2.5-flash-lite-preview-06-17", base_url="https://openrouter.ai/api/v1", api_key=team_settings.openrouter_api_key),
     tools=[TavilyTools(api_key=team_settings.tavily_api_key), DuckDuckGoTools(), Crawl4aiTools(), Newspaper4kTools()],
     add_datetime_to_instructions=True,
     description="Intelligent researcher with adaptive depth based on query complexity",
