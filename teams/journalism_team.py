@@ -1,7 +1,5 @@
 from textwrap import dedent
 from typing import Optional
-import re
-
 from agno.agent import Agent
 from agno.models.openai import OpenAIChat
 from agno.models.google import Gemini
@@ -79,6 +77,7 @@ research_planner = Agent(
         **Token Budget:** [Estimated tokens needed per subtopic]
         
         **Quality Filters:**
+        - Take into account the current date: {current_date}
         - Prioritize sources from last 2 years unless historical context needed
         - Focus on authoritative domains (.edu, .gov, major publications)
         - Skip redundant or low-quality sources
