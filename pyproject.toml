@@ -9,6 +9,7 @@ dependencies = [
   "agno[aws]==1.7.6",
   "alembic",
   "beautifulsoup4",
+  "crawl4ai",
   "duckduckgo-search",
   "exa_py",
   "fastapi[standard]",
