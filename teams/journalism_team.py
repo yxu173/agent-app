@@ -52,7 +52,7 @@ research_planner = Agent(
     name="Research Planner",
     agent_id="research-planner",
     role="Creates efficient, focused research plans based on query classification",
-    model=OpenAIChat(id="qwen/qwen3-235b-a22b-thinking-2507", base_url="https://openrouter.ai/api/v1", api_key=team_settings.openrouter_api_key),
+    model=OpenAIChat(id="openai/gpt-5-mini", base_url="https://openrouter.ai/api/v1", api_key=team_settings.openrouter_api_key),
     tools=[DuckDuckGoTools(), Crawl4aiTools(), Newspaper4kTools()],
     add_datetime_to_instructions=True,
     instructions=dedent("""
@@ -89,7 +89,7 @@ research_planner = Agent(
 research_agent = Agent(
     name="Research Agent",
     agent_id="research-agent",
-    model=OpenAIChat(id="google/gemini-2.5-flash-lite-preview-06-17", base_url="https://openrouter.ai/api/v1", api_key=team_settings.openrouter_api_key),
+    model=OpenAIChat(id="deepseek/deepseek-chat-v3-0324", base_url="https://openrouter.ai/api/v1", api_key=team_settings.openrouter_api_key),
     tools=[TavilyTools(api_key=team_settings.tavily_api_key), DuckDuckGoTools(), Crawl4aiTools(), Newspaper4kTools()],
     add_datetime_to_instructions=True,
     description="Intelligent researcher with adaptive depth based on query complexity",
@@ -118,6 +118,7 @@ research_agent = Agent(
         - Organize findings by subtopic from research plan
         - Include only high-impact quotes and statistics
         - Maintain source links but avoid excessive citation bloat
+        - **CRITICAL:** Always format sources as working markdown links: [Source Name](URL)
     """),
     expected_output=dedent("""
         # Research Summary: {Topic}
@@ -137,7 +138,11 @@ research_agent = Agent(
         - **Source Quality:** {Assessment of source reliability}
         
         ## Source Summary
-        **Primary Sources:** [{Source 1}]({URL}), [{Source 2}]({URL})
+        **Primary Sources:** 
+        - [{Source 1}]({URL})
+        - [{Source 2}]({URL})
+        - [{Source 3}]({URL}) (if available)
+        
         **Research Depth:** {MODERATE/DEEP based on classification}
         **Search Success Rate:** {X/Y successful searches}
         
@@ -227,6 +232,7 @@ writing_agent = Agent(
         - Smooth transitions between points
         - Concrete examples and specific data
         - Clear conclusion with implications
+        - **Sources Section:** Always include a "## Sources" section with properly formatted markdown links: [Source Name](URL)
     """),
     markdown=True,
 )
@@ -249,9 +255,10 @@ editor_agent = Agent(
         
         **Final Check:**
         - Fact-check major claims against sources
-        - Ensure proper citation format
+        - Ensure proper citation format with working markdown links: [Source Name](URL)
         - Verify coherent narrative arc
         - Confirm readability and engagement
+        - **Source Verification:** Ensure all sources are properly formatted as clickable links
         
         **Output Format:**
         Provide the final, polished article without extensive editorial notes unless critical issues are found.
@@ -334,8 +341,14 @@ You are the team coordinator for an intelligent research team. Your job is to or
 - SIMPLE: Direct response (50-100 words)
 - MODERATE: Focused article (300-500 words)
 - DEEP: Comprehensive report (600-1000 words)
+
+**Source Requirements:**
+- All sources MUST be formatted as working markdown links: [Source Name](URL)
+- Include a dedicated "## Sources" section at the end
+- Verify all links are properly formatted and functional
+- Include at least 5-10 primary sources for MODERATE queries, 10-20 for DEEP queries
 """),
-            success_criteria="Deliver high-quality research output efficiently, matching depth to query complexity while optimizing token usage.",
+            success_criteria="Deliver high-quality research output efficiently, matching depth to query complexity while optimizing token usage. Ensure all sources are properly formatted as working links.",
             add_datetime_to_instructions=True,
             markdown=True,
             enable_team_history=True,
@@ -360,7 +373,7 @@ You are the team coordinator for an intelligent research team. Your job is to or
                 {Significance and next steps}
                 
                 ## Sources
-                {Clean citation list with links}
+                {Clean citation list with working links in markdown format: [Source Name](URL)}
                 
                 ---
                 **Research Efficiency Report:**
