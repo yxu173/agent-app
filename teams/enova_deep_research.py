@@ -271,19 +271,19 @@ editor_agent = Agent(
 )
 
 # --- Smart Team Coordinator ---
-def get_journalism_team(
+def get_enova_deep_research_team(
     model_id: Optional[str] = None,
     user_id: Optional[str] = None,
     session_id: Optional[str] = None,
     debug_mode: bool = True,
 ):
     """
-    Optimized journalism team with intelligent query handling and token efficiency.
+    Optimized Enova Deep Research team with intelligent query handling and token efficiency.
     """
     try:
         team = Team(
-            name="Smart AI Research Team",
-            team_id="smart-journalism-team",
+            name="Enova Deep Research Team",
+            team_id="enova-deep-research-team",
             mode="coordinate",
             model=OpenAIChat(id="z-ai/glm-4.5", base_url="https://openrouter.ai/api/v1", api_key=team_settings.openrouter_api_key),
             members=[
@@ -294,7 +294,7 @@ def get_journalism_team(
                 writing_agent,
                 editor_agent,
             ],
-            description="Intelligent multi-agent research team with adaptive depth and token optimization.",
+            description="Enova Deep Research multi-agent team with adaptive depth and token optimization.",
             instructions=dedent("""
 **SMART WORKFLOW COORDINATION:**
 
@@ -383,7 +383,7 @@ You are the team coordinator for an intelligent research team. Your job is to or
                 - Research Quality: {High/Medium}
             """),
             storage=SqliteStorage(
-                table_name="smart_journalism_team",
+                table_name="enova_deep_research_team",
                 db_url=db_url,
                 mode="team",
                 auto_upgrade_schema=True,
@@ -395,5 +395,5 @@ You are the team coordinator for an intelligent research team. Your job is to or
         
         return team
     except Exception as e:
-        logger.error(f"Error creating smart journalism team: {e}")
+        logger.error(f"Error creating Enova Deep Research team: {e}")
         raise

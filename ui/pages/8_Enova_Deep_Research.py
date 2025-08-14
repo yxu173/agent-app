@@ -5,7 +5,7 @@ from agno.team import Team
 from agno.tools.streamlit.components import check_password
 from agno.utils.log import logger
 
-from teams.journalism_team import get_journalism_team
+from teams import get_enova_deep_research_team
 from ui.css import CUSTOM_CSS
 from ui.utils import (
     add_message,
@@ -18,17 +18,17 @@ from ui.utils import (
 nest_asyncio.apply()
 
 st.set_page_config(
-    page_title="Journalism Team",
+    page_title="Enova Deep Research",
     page_icon=":newspaper:",
     layout="wide",
 )
 st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
-team_name = "journalism_team"
+team_name = "enova_deep_research_team"
 
 async def header():
-    st.markdown("<h1 class='heading'>AI Journalism Team</h1>", unsafe_allow_html=True)
+    st.markdown("<h1 class='heading'>Enova Deep Research Team</h1>", unsafe_allow_html=True)
     st.markdown(
-        "<p class='subheading'>A multi-agent journalism team for deep research, analysis, and article writing.</p>",
+        "<p class='subheading'>A multi-agent research team for deep investigation, analysis, and comprehensive reporting.</p>",
         unsafe_allow_html=True,
     )
 
@@ -39,8 +39,8 @@ async def body() -> None:
     ####################################################################
     team: Team
     if team_name not in st.session_state or st.session_state[team_name]["team"] is None:
-        logger.info("---*--- Creating Journalism Team ---*---")
-        team = get_journalism_team()
+        logger.info("---*--- Creating Enova Deep Research Team ---*---")
+        team = get_enova_deep_research_team()
         st.session_state[team_name] = {"team": team, "session_id": None, "messages": []}
     else:
         team = st.session_state[team_name]["team"]
@@ -59,7 +59,7 @@ async def body() -> None:
     ####################################################################
     # Get user input
     ####################################################################
-    if prompt := st.chat_input("📰 What should we investigate?"):
+    if prompt := st.chat_input("🔍 What should we research?"):
         await add_message(team_name, "user", prompt)
 
     ####################################################################
@@ -91,7 +91,7 @@ async def body() -> None:
             # Create container for tool calls
             tool_calls_container = st.empty()
             resp_container = st.empty()
-            with st.spinner(":thinking_face: Investigating..."):
+            with st.spinner(":thinking_face: Researching..."):
                 response = ""
                 try:
                     # Run the team and stream the response
