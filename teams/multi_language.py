@@ -2,7 +2,7 @@ from typing import Optional
 
 from agno.agent import Agent
 from agno.models.openai import OpenAIChat
-from agno.storage.postgres import PostgresStorage
+from agno.storage.sqlite import SqliteStorage
 from agno.team.team import Team
 
 from db.session import db_url
@@ -99,7 +99,7 @@ def get_multi_language_team(
         markdown=True,
         show_tool_calls=True,
         show_members_responses=True,
-        storage=PostgresStorage(
+        storage=SqliteStorage(
             table_name="multi_language_team",
             db_url=db_url,
             mode="team",

@@ -10,4 +10,5 @@ class Base(DeclarativeBase):
     https://docs.sqlalchemy.org/en/20/orm/mapping_api.html#sqlalchemy.orm.DeclarativeBase
     """
 
-    metadata = MetaData(schema="public")
+    # SQLite doesn't use schemas like PostgreSQL, so we use the default schema
+    metadata = MetaData()

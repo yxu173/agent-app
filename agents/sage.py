@@ -3,9 +3,9 @@ from typing import Optional
 
 from agno.agent import Agent, AgentKnowledge
 from agno.models.openai import OpenAIChat
-from agno.storage.agent.postgres import PostgresAgentStorage
+from agno.storage.agent.sqlite import SqliteAgentStorage
 from agno.tools.duckduckgo import DuckDuckGoTools
-from agno.vectordb.pgvector import PgVector, SearchType
+from agno.vectordb.sqlite import SqliteVector, SearchType
 
 from agents.settings import agent_settings
 from db.session import db_url
@@ -38,10 +38,10 @@ def get_sage(
         # Tools available to the agent
         tools=[DuckDuckGoTools()],
         # Storage for the agent
-        storage=PostgresAgentStorage(table_name="sage_sessions", db_url=db_url),
+        storage=SqliteAgentStorage(table_name="sage_sessions", db_url=db_url),
         # Knowledge base for the agent
         knowledge=AgentKnowledge(
-            vector_db=PgVector(table_name="sage_knowledge", db_url=db_url, search_type=SearchType.hybrid)
+            vector_db=SqliteVector(table_name="sage_knowledge", db_url=db_url, search_type=SearchType.hybrid)
         ),
         # Description of the agent
         description=dedent("""\

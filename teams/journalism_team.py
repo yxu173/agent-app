@@ -3,7 +3,7 @@ from typing import Optional
 from agno.agent import Agent
 from agno.models.openai import OpenAIChat
 from agno.models.google import Gemini
-from agno.storage.postgres import PostgresStorage
+from agno.storage.sqlite import SqliteStorage
 from agno.team.team import Team
 from agno.tools.duckduckgo import DuckDuckGoTools
 from agno.tools.tavily import TavilyTools
@@ -382,7 +382,7 @@ You are the team coordinator for an intelligent research team. Your job is to or
                 - Estimated Tokens: {Approximate count}
                 - Research Quality: {High/Medium}
             """),
-            storage=PostgresStorage(
+            storage=SqliteStorage(
                 table_name="smart_journalism_team",
                 db_url=db_url,
                 mode="team",

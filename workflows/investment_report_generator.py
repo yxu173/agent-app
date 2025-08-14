@@ -3,7 +3,7 @@ from typing import Iterator
 
 from agno.agent import Agent, RunResponse
 from agno.models.openai import OpenAIChat
-from agno.storage.postgres import PostgresStorage
+from agno.storage.sqlite import SqliteStorage
 from agno.tools.yfinance import YFinanceTools
 from agno.utils.log import logger
 from agno.workflow import Workflow
@@ -144,7 +144,7 @@ class InvestmentReportGenerator(Workflow):
 def get_investment_report_generator(debug_mode: bool = False) -> InvestmentReportGenerator:
     return InvestmentReportGenerator(
         workflow_id="generate-investment-report",
-        storage=PostgresStorage(
+        storage=SqliteStorage(
             table_name="investment_report_generator_workflows",
             db_url=db_url,
             auto_upgrade_schema=True,

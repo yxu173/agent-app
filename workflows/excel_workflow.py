@@ -630,7 +630,6 @@ The instructions are finished, so after analyzing and understanding them well an
                     session_keywords = []
 
             if session_keywords:
-                #download_url = self.get_download_url(session_id)
                 result = f"🎉 **Session Complete!**\n\n"
                 result += f"📊 **Summary:**\n"
                 result += f"• Total valuable keywords processed: {len(session_keywords)}\n"

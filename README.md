@@ -4,7 +4,7 @@ This repo contains the code for a production-grade agentic system built with:
 
 1. A Streamlit UI
 2. A FastAPI server
-3. A Postgres database with the PgVector extension.
+3. SQLite database for local storage.
 
 You can run the agent app in 2 environments:
 

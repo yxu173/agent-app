@@ -15,8 +15,7 @@ dependencies = [
   "fastapi[standard]",
   "nest_asyncio",
   "openai",
-  "pgvector",
-  "psycopg[binary]",
+  "openpyxl",
   "pypdf",
   "python-docx",
   "sqlalchemy",
@@ -63,7 +62,7 @@ plugins = ["pydantic.mypy"]
 exclude = [".venv*"]
 
 [[tool.mypy.overrides]]
-module = ["pgvector.*", "setuptools.*", "nest_asyncio.*", "agno.*"]
+module = ["setuptools.*", "nest_asyncio.*", "agno.*"]
 ignore_missing_imports = true
 
 [tool.uv.pip]

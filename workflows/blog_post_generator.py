@@ -4,7 +4,7 @@ from typing import Dict, Iterator, Optional
 
 from agno.agent import Agent
 from agno.models.openai import OpenAIChat
-from agno.storage.postgres import PostgresStorage
+from agno.storage.sqlite import SqliteStorage
 from agno.tools.duckduckgo import DuckDuckGoTools
 from agno.tools.newspaper4k import Newspaper4kTools
 from agno.utils.log import logger
@@ -341,7 +341,7 @@ def write_blog_post(self, topic: str, scraped_articles: Dict[str, ScrapedArticle
 def get_blog_post_generator(debug_mode: bool = False) -> BlogPostGenerator:
     return BlogPostGenerator(
         workflow_id="generate-blog-post-on",
-        storage=PostgresStorage(
+        storage=SqliteStorage(
             table_name="blog_post_generator_workflows",
             db_url=db_url,
             auto_upgrade_schema=True,

@@ -3,7 +3,7 @@ from typing import Optional
 
 from agno.agent import Agent
 from agno.models.openai import OpenAIChat
-from agno.storage.postgres import PostgresStorage
+from agno.storage.sqlite import SqliteStorage
 from agno.team.team import Team
 from agno.tools.duckduckgo import DuckDuckGoTools
 from agno.tools.yfinance import YFinanceTools
@@ -54,7 +54,7 @@ finance_agent = Agent(
         - Note market uncertainties
         - Mention relevant regulatory concerns
     """),
-    storage=PostgresStorage(table_name="finance_agent", db_url=db_url, auto_upgrade_schema=True),
+    storage=SqliteStorage(table_name="finance_agent", db_url=db_url, auto_upgrade_schema=True),
     add_history_to_messages=True,
     num_history_responses=5,
     add_datetime_to_instructions=True,
@@ -76,7 +76,7 @@ web_agent = Agent(
     ],
     show_tool_calls=True,
     markdown=True,
-    storage=PostgresStorage(table_name="web_agent", db_url=db_url, auto_upgrade_schema=True),
+    storage=SqliteStorage(table_name="web_agent", db_url=db_url, auto_upgrade_schema=True),
 )
 
 
@@ -107,7 +107,7 @@ def get_finance_researcher_team(
         success_criteria="A good financial research report.",
         enable_agentic_context=True,
         expected_output="A good financial research report.",
-        storage=PostgresStorage(
+        storage=SqliteStorage(
             table_name="finance_researcher_team",
             db_url=db_url,
             mode="team",

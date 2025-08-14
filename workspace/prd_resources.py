@@ -4,7 +4,6 @@ from agno.aws.app.fastapi import FastApi
 from agno.aws.app.streamlit import Streamlit
 from agno.aws.resource.ec2 import InboundRule, SecurityGroup
 from agno.aws.resource.ecs import EcsCluster
-from agno.aws.resource.rds import DbInstance, DbSubnetGroup
 from agno.aws.resource.reference import AwsReference
 from agno.aws.resource.s3 import S3Bucket
 from agno.aws.resource.secret import SecretsManager
@@ -48,15 +47,6 @@ prd_secret = SecretsManager(
     group="app",
     # Create secret from workspace/secrets/prd_app_secrets.yml
     secret_files=[ws_settings.ws_root.joinpath("workspace/secrets/prd_app_secrets.yml")],
-    skip_delete=skip_delete,
-    save_output=save_output,
-)
-# -*- Secrets for production database
-prd_db_secret = SecretsManager(
-    name=f"{ws_settings.prd_key}-db-secrets",
-    group="db",
-    # Create secret from workspace/secrets/prd_db_secrets.yml
-    secret_files=[ws_settings.ws_root.joinpath("workspace/secrets/prd_db_secrets.yml")],
     skip_delete=skip_delete,
     save_output=save_output,
 )
@@ -104,57 +94,6 @@ prd_sg = SecurityGroup(
     skip_delete=skip_delete,
     save_output=save_output,
 )
-# -*- Security Group for the database
-prd_db_port = 5432
-prd_db_sg = SecurityGroup(
-    name=f"{ws_settings.prd_key}-db-sg",
-    group="db",
-    description="Security group for the production database",
-    inbound_rules=[
-        InboundRule(
-            description="Allow traffic from apps to the database",
-            port=prd_db_port,
-            security_group_id=AwsReference(prd_sg.get_security_group_id),
-        ),
-    ],
-    depends_on=[prd_sg],
-    subnets=ws_settings.aws_subnet_ids,
-    skip_delete=skip_delete,
-    save_output=save_output,
-)
-
-# -*- RDS Database Subnet Group
-prd_db_subnet_group = DbSubnetGroup(
-    name=f"{ws_settings.prd_key}-db-sg",
-    group="db",
-    subnet_ids=ws_settings.aws_subnet_ids,
-    skip_delete=skip_delete,
-    save_output=save_output,
-)
-
-# -*- RDS Database Instance
-prd_db = DbInstance(
-    name=f"{ws_settings.prd_key}-db",
-    group="db",
-    db_name="ai",
-    port=prd_db_port,
-    engine="postgres",
-    engine_version="17.2",
-    allocated_storage=64,
-    # NOTE: For production, use a larger instance type.
-    # Last checked price: ~$25 per month
-    db_instance_class="db.t4g.small",
-    db_security_groups=[prd_db_sg],
-    db_subnet_group=prd_db_subnet_group,
-    availability_zone=ws_settings.aws_az1,
-    publicly_accessible=True,
-    enable_performance_insights=True,
-    aws_secret=prd_db_secret,
-    skip_delete=skip_delete,
-    save_output=save_output,
-    # Do not wait for the db to be deleted
-    wait_for_delete=False,
-)
 
 # -*- ECS cluster
 prd_ecs_cluster = EcsCluster(
@@ -173,16 +112,10 @@ container_env = {
     # Enable monitoring
     "AGNO_MONITOR": "True",
     "AGNO_API_KEY": getenv("AGNO_API_KEY"),
-    # Database configuration
-    "DB_HOST": AwsReference(prd_db.get_db_endpoint),
-    "DB_PORT": AwsReference(prd_db.get_db_port),
-    "DB_USER": AwsReference(prd_db.get_master_username),
-    "DB_PASS": AwsReference(prd_db.get_master_user_password),
-    "DB_DATABASE": AwsReference(prd_db.get_db_name),
-    # Wait for database to be available before starting the application
-    "WAIT_FOR_DB": prd_db.enabled,
+    # SQLite database configuration
+    "DB_FILE": "/tmp/agent_app.db",
     # Migrate database on startup using alembic
-    "MIGRATE_DB": prd_db.enabled,
+    "MIGRATE_DB": True,
 }
 
 # -*- Streamlit running on ECS
@@ -256,11 +189,7 @@ prd_aws_config = AwsResources(
     resources=(
         prd_lb_sg,
         prd_sg,
-        prd_db_sg,
         prd_secret,
-        prd_db_secret,
-        prd_db_subnet_group,
-        prd_db,
         prd_ecs_cluster,
         prd_bucket,
     ),

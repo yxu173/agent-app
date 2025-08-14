@@ -1,7 +1,6 @@
 from os import getenv
 
 from agno.docker.app.fastapi import FastApi
-from agno.docker.app.postgres import PgVectorDb
 from agno.docker.app.streamlit import Streamlit
 from agno.docker.resource.image import DockerImage
 from agno.docker.resources import DockerResources
@@ -22,16 +21,6 @@ dev_image = DockerImage(
     push_image=ws_settings.push_images,
 )
 
-# -*- Dev database running on port 5432:5432
-dev_db = PgVectorDb(
-    name=f"{ws_settings.ws_name}-db",
-    pg_user="ai",
-    pg_password="ai",
-    pg_database="ai",
-    # Connect to this db on port 5432
-    host_port=5432,
-)
-
 # -*- Container environment
 container_env = {
     "RUNTIME_ENV": "dev",
@@ -41,16 +30,10 @@ container_env = {
     # Enable monitoring
     #"AGNO_MONITOR": "True",
     #"AGNO_API_KEY": getenv("AGNO_API_KEY"),
-    # Database configuration
-    "DB_HOST": dev_db.get_db_host(),
-    "DB_PORT": dev_db.get_db_port(),
-    "DB_USER": dev_db.get_db_user(),
-    "DB_PASS": dev_db.get_db_password(),
-    "DB_DATABASE": dev_db.get_db_database(),
-    # Wait for database to be available before starting the application
-    "WAIT_FOR_DB": dev_db.enabled,
+    # SQLite database configuration
+    "DB_FILE": "tmp/agent_app.db",
     # Migrate database on startup using alembic
-    "MIGRATE_DB": dev_db.enabled,
+    "MIGRATE_DB": True,
 }
 
 # -*- Streamlit running on port 8501:8501
@@ -66,7 +49,6 @@ dev_streamlit = Streamlit(
     use_cache=True,
     # Read secrets from secrets/dev_app_secrets.yml
     secrets_file=ws_settings.ws_root.joinpath("workspace/secrets/dev_app_secrets.yml"),
-    depends_on=[dev_db],
 )
 
 # -*- FastApi running on port 8000:8000
@@ -81,12 +63,11 @@ dev_fastapi = FastApi(
     use_cache=True,
     # Read secrets from secrets/dev_app_secrets.yml
     secrets_file=ws_settings.ws_root.joinpath("workspace/secrets/dev_app_secrets.yml"),
-    depends_on=[dev_db],
 )
 
 # -*- Dev DockerResources
 dev_docker_resources = DockerResources(
     env=ws_settings.dev_env,
     network=ws_settings.ws_name,
-    apps=[dev_db, dev_streamlit, dev_fastapi],
+    apps=[dev_streamlit, dev_fastapi],
 )

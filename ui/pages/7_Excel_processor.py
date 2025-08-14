@@ -149,26 +149,7 @@ async def body() -> None:
         with col3:
             st.metric("File Type", uploaded_file.type)
 
-        # Show file preview (first few lines)
-        try:
-            import pandas as pd
-            with tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx') as tmp_file:
-                tmp_file.write(uploaded_file.getvalue())
-                tmp_file_path = tmp_file.name
-
-            try:
-                df = pd.read_excel(tmp_file_path, nrows=5)
-                st.markdown("#### 📋 File Preview (First 5 rows)")
-                st.dataframe(df, use_container_width=True)
-            except Exception as e:
-                st.warning(f"Could not preview file: {e}")
-            finally:
-                try:
-                    os.unlink(tmp_file_path)
-                except:
-                    pass
-        except Exception as e:
-            st.warning(f"Error reading file: {e}")
+        # File info displayed above
 
     ####################################################################
     # Configuration Section
