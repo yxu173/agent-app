@@ -204,50 +204,47 @@ async def body() -> None:
 
                 # Process the file
                 with st.chat_message("assistant"):
-                    # Create container for tool calls
-                    tool_calls_container = st.empty()
-                    resp_container = st.empty()
+                    # Create container for real-time response
+                    response_container = st.empty()
+                    response = ""
+                    
+                    # Show initial loading message
+                    response_container.markdown("🤖 **AI is analyzing your keywords...**")
+                    
+                    try:
+                        # Run the workflow and stream the response
+                        run_response = workflow.run_workflow(
+                            file_path=temp_file_path,
+                            niche=niche,
+                            chunk_size=chunk_size
+                        )
 
-                    with st.spinner(":thinking_face: Analyzing keywords..."):
-                        response = ""
+                        for resp_chunk in run_response:
+                            # Display response in real-time
+                            if resp_chunk.content is not None:
+                                response += resp_chunk.content
+                                response_container.markdown(response)
+
+                        # Add the final response to the messages (but don't display again)
+                        if workflow.run_response is not None and hasattr(workflow.run_response, 'tools'):
+                            await add_message(workflow_name, "assistant", response, workflow.run_response.tools)
+                        else:
+                            await add_message(workflow_name, "assistant", response)
+
+                        # Show success message
+                        st.success("✅ Processing completed successfully!")
+
+                    except Exception as e:
+                        logger.error(f"Error during workflow run: {str(e)}", exc_info=True)
+                        error_message = f"Sorry, I encountered an error: {str(e)}"
+                        await add_message(workflow_name, "assistant", error_message)
+                        st.error(error_message)
+                    finally:
+                        # Clean up temporary file
                         try:
-                            # Run the workflow and stream the response
-                            run_response = workflow.run_workflow(
-                                file_path=temp_file_path,
-                                niche=niche,
-                                chunk_size=chunk_size
-                            )
-
-                            for resp_chunk in run_response:
-                                # Display tool calls if available
-                                if hasattr(resp_chunk, 'tools') and resp_chunk.tools and len(resp_chunk.tools) > 0:
-                                    display_tool_calls(tool_calls_container, resp_chunk.tools)
-
-                                # Display response
-                                if resp_chunk.content is not None:
-                                    response += resp_chunk.content
-                                    resp_container.markdown(response)
-
-                            # Add the final response to the messages
-                            if workflow.run_response is not None and hasattr(workflow.run_response, 'tools'):
-                                await add_message(workflow_name, "assistant", response, workflow.run_response.tools)
-                            else:
-                                await add_message(workflow_name, "assistant", response)
-
-                            # Show success message
-                            st.success("✅ Processing completed successfully!")
-
-                        except Exception as e:
-                            logger.error(f"Error during workflow run: {str(e)}", exc_info=True)
-                            error_message = f"Sorry, I encountered an error: {str(e)}"
-                            await add_message(workflow_name, "assistant", error_message)
-                            st.error(error_message)
-                        finally:
-                            # Clean up temporary file
-                            try:
-                                os.unlink(temp_file_path)
-                            except:
-                                pass
+                            os.unlink(temp_file_path)
+                        except:
+                            pass
 
             except Exception as e:
                 logger.error(f"Error processing file: {str(e)}", exc_info=True)
@@ -264,10 +261,13 @@ async def body() -> None:
         if session_id:
             st.info(f"📊 **Current Session:** {session_id}")
 
-    # Display all messages in chat format
+    # Display all messages in chat format (except the most recent assistant message which is shown in real-time)
     messages = st.session_state[workflow_name]["messages"]
     if messages:
-        for message in messages:
+        # Skip the last assistant message if it's the most recent one (to avoid duplication with real-time display)
+        messages_to_display = messages[:-1] if messages and messages[-1]["role"] == "assistant" else messages
+        
+        for message in messages_to_display:
             if message["role"] in ["user", "assistant"]:
                 _content = message["content"]
                 if _content is not None:
