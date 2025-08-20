@@ -6,10 +6,11 @@ readme = "README.md"
 authors = [{ name = "Agno", email = "hello@agno.com" }]
 
 dependencies = [
-  "agno[aws]==1.7.6",
+  "agno[aws]==1.7.11",
   "alembic",
   "beautifulsoup4",
   "crawl4ai",
+  "ddgs",
   "duckduckgo-search",
   "exa_py",
   "fastapi[standard]",

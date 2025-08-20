@@ -303,6 +303,7 @@ You are the team coordinator for an intelligent research team. Your job is to or
 **Step 1: Query Classification**
 - Always start by transferring to Query Classifier
 - Wait for classification result (SIMPLE/MODERATE/DEEP)
+- **IMPORTANT:** Start your response with "🎯 QUERY CLASSIFIER ACTIVATED" when transferring
 
 **Step 2: Adaptive Workflow**
 
@@ -314,10 +315,21 @@ You are the team coordinator for an intelligent research team. Your job is to or
 **For MODERATE queries:**
 - Proceed with: Research Planner → Research Agent → Writing Agent → Editor Agent
 - Skip Analysis Agent to save tokens on straightforward topics
+- **IMPORTANT:** Start each agent transfer with clear markers:
+  - "📋 RESEARCH PLANNER ACTIVATED" for Research Planner
+  - "🔍 RESEARCH AGENT ACTIVATED" for Research Agent  
+  - "✍️ WRITING AGENT ACTIVATED" for Writing Agent
+  - "📝 EDITOR AGENT ACTIVATED" for Editor Agent
 - Log: "Moderate query detected, using streamlined 4-agent workflow"
 
 **For DEEP queries:**
 - Use full pipeline: Research Planner → Research Agent → Analysis Agent → Writing Agent → Editor Agent
+- **IMPORTANT:** Start each agent transfer with clear markers:
+  - "📋 RESEARCH PLANNER ACTIVATED" for Research Planner
+  - "🔍 RESEARCH AGENT ACTIVATED" for Research Agent
+  - "🧠 ANALYSIS AGENT ACTIVATED" for Analysis Agent
+  - "✍️ WRITING AGENT ACTIVATED" for Writing Agent
+  - "📝 EDITOR AGENT ACTIVATED" for Editor Agent
 - Log: "Deep query detected, using comprehensive 5-agent workflow"
 
 **Coordination Rules:**
@@ -326,6 +338,13 @@ You are the team coordinator for an intelligent research team. Your job is to or
 3. If any agent fails, continue workflow with error context
 4. Monitor token usage and provide efficiency metrics at the end
 5. Ensure each agent has clear context from previous steps
+
+**Agent Transfer Markers:**
+- Use the exact activation phrases above to help the UI track agent progress
+- These markers should appear at the very beginning of each agent's response
+- This enables real-time progress tracking in the user interface
+- **CRITICAL:** Always include the activation marker as the first line when transferring to any agent
+- **CRITICAL:** Do not include activation markers in the final output - they are for UI tracking only
 
 **Token Efficiency Tracking:**
 - Log estimated tokens used at each step
@@ -352,7 +371,7 @@ You are the team coordinator for an intelligent research team. Your job is to or
             add_datetime_to_instructions=True,
             markdown=True,
             enable_team_history=True,
-            num_of_interactions_from_history=3,  # Reduced for efficiency
+            num_of_interactions_from_history=3,
             expected_output=dedent("""
                 **For Simple Queries:**
                 Friendly, direct response without full research pipeline.
@@ -391,6 +410,7 @@ You are the team coordinator for an intelligent research team. Your job is to or
             debug_mode=debug_mode,
             session_id=session_id,
             user_id=user_id,
+            team_session_state= {}
         )
         
         return team
