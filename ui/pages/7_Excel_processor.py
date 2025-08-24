@@ -39,7 +39,7 @@ async def header():
 
 
 async def sidebar(workflow: Workflow):
-    """Display sidebar with session management using the new session_selector_workflow."""
+    """Display sidebar with session management and settings configuration."""
     st.sidebar.markdown("### 📊 Session Management")
 
     # Model selector
@@ -75,6 +75,87 @@ async def sidebar(workflow: Workflow):
         if workflow_name in st.session_state:
             st.session_state[workflow_name] = {}
         st.rerun()
+
+    # Settings Configuration Section
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("### ⚙️ AI Instructions Settings")
+    
+    # Import the settings manager
+    from workflows.settings_manager import WorkflowSettingsManager
+    
+    # Get current instructions
+    current_instructions = WorkflowSettingsManager.get_setting(
+        workflow_name="excel_processor",
+        setting_key="agent_instructions"
+    )
+    
+    # If no custom instructions exist, get the default
+    if current_instructions is None:
+        from workflows.excel_workflow import ExcelProcessor
+        temp_workflow = ExcelProcessor()
+        current_instructions = temp_workflow._get_default_instructions()
+    
+    # Instructions editor
+    st.sidebar.markdown("**🤖 AI Agent Instructions**")
+    st.sidebar.markdown("*Customize how the AI analyzes keywords*")
+    
+    # Use a text area for editing instructions
+    edited_instructions = st.sidebar.text_area(
+        "Instructions",
+        value=current_instructions,
+        height=300,
+        help="Customize the AI agent instructions. Use {niche} as a placeholder for the niche/topic."
+    )
+    
+    # Save button
+    col1, col2 = st.sidebar.columns(2)
+    
+    with col1:
+        if st.button("💾 Save Instructions", type="primary"):
+            try:
+                success = WorkflowSettingsManager.save_setting(
+                    workflow_name="excel_processor",
+                    setting_key="agent_instructions",
+                    setting_value=edited_instructions,
+                    description="Custom AI agent instructions for Excel keyword analysis"
+                )
+                if success:
+                    st.sidebar.success("✅ Instructions saved successfully!")
+                else:
+                    st.sidebar.error("❌ Failed to save instructions")
+            except Exception as e:
+                st.sidebar.error(f"❌ Error saving instructions: {str(e)}")
+    
+    with col2:
+        if st.button("🔄 Reset to Default"):
+            try:
+                from workflows.excel_workflow import ExcelProcessor
+                temp_workflow = ExcelProcessor()
+                default_instructions = temp_workflow._get_default_instructions()
+                
+                success = WorkflowSettingsManager.save_setting(
+                    workflow_name="excel_processor",
+                    setting_key="agent_instructions",
+                    setting_value=default_instructions,
+                    description="Default AI agent instructions for Excel keyword analysis"
+                )
+                if success:
+                    st.sidebar.success("✅ Reset to default instructions!")
+                    st.rerun()
+                else:
+                    st.sidebar.error("❌ Failed to reset instructions")
+            except Exception as e:
+                st.sidebar.error(f"❌ Error resetting instructions: {str(e)}")
+    
+    # Instructions info
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("**📝 Instructions Guide:**")
+    st.sidebar.markdown("""
+    - Use `{niche}` as a placeholder for the niche/topic
+    - Instructions are saved to the database
+    - Changes take effect immediately
+    - Updates are infrequent (monthly recommended)
+    """)
 
 
 async def body() -> None:

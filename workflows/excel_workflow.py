@@ -9,6 +9,7 @@ from agno.storage.sqlite import SqliteStorage
 from agno.workflow import RunResponse, Workflow
 from pydantic import BaseModel, Field
 from agno.utils.log import logger
+from workflows.settings_manager import WorkflowSettingsManager
 
 current_row_position = 0
 
@@ -253,8 +254,8 @@ class ExcelProcessor(Workflow):
     keyword_analyzer: Agent = Agent(
         model=OpenAIChat(id="gpt-4o-mini"),
         debug_mode=True,
-        stream=False,
-        description=dedent("""\
+        stream=True,
+        instructions=dedent("""\
         You are a Seasoned SEO professional specializing in keyword analysis, At the same time you are an expert content creator (these previous two personalities should work in harmony and compatibility), Your task is objectively evaluating keywords for optimal SEO segments, and given complete keyword lists. Choose Keywords that are valuable and useful to readers., as these selected keywords will be used to create informative blog articles.
 
 
@@ -735,8 +736,20 @@ The instructions are finished, so after analyzing and understanding them well an
         return '\n'.join(formatted_reasons)
 
     def get_agent_instructions(self, niche: str) -> str:
-        """Generate agent instructions with dynamic niche."""
-        return dedent(f'''\
+        """Generate agent instructions with dynamic niche and configurable settings."""
+        # Get custom instructions from database, fallback to default if not found
+        custom_instructions = WorkflowSettingsManager.get_setting(
+            workflow_name="excel_processor",
+            setting_key="agent_instructions",
+            default_value=self._get_default_instructions()
+        )
+        
+        # Replace the niche placeholder in the custom instructions
+        return custom_instructions.replace("{niche}", niche)
+    
+    def _get_default_instructions(self) -> str:
+        """Get the default agent instructions."""
+        return dedent("""\
             You are a Seasoned SEO professional specializing in keyword analysis, At the same time you are an expert content creator (these previous two personalities should work in harmony and compatibility), Your task is objectively evaluating keywords for optimal SEO segments, and given complete keyword lists. Choose Keywords that are valuable and useful to readers., as these selected keywords will be used to create informative blog articles.
 
 
@@ -774,7 +787,7 @@ ________________________________________________________________
 ________________________________________________________________
 **Important instructions and considerations:**
 1. Do not include personal opinions regarding the audience 's interests, desires, or perspectives.
-Also “Avoid over‐elaboration or speculative reasoning: focus only on the given criteria without philosophical digressions.”
+Also "Avoid over‐elaboration or speculative reasoning: focus only on the given criteria without philosophical digressions."
 2. Maintain a professional and objective tone throughout the analysis.
 3. Strictly follow the provided standards without deviation.
 4. Do not make assumptions about a keyword's depth or complexity; treat all keywords equally without any bias to any each.
@@ -800,7 +813,7 @@ ________________________________________________________________
 **Several lists of keywords will be provided in the same chat, so you are required to deal with each list completely independently to avoid confusion or merging or comparing between the lists.**
 ________________________________________________________________
 The instructions are finished, so after analyzing and understanding them well and in a coherent manner, ask for the inputs.
-''')
+""")
 
 
 def get_excel_processor(
