@@ -9,7 +9,7 @@ class AgentSettings(BaseSettings):
     gpt_4_mini: str = "gpt-4o-mini"
     gpt_4: str = "gpt-4o"
     embedding_model: str = "text-embedding-3-small"
-    default_max_completion_tokens: int = 16000
+    default_max_completion_tokens: int = 4096
     default_temperature: float = 0
 
 

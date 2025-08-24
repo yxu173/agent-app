@@ -18,7 +18,12 @@ query_classifier = Agent(
     name="Query Classifier",
     agent_id="query-classifier",
     role="Classifies queries and determines appropriate research depth",
-    model=OpenAIChat(id="z-ai/glm-4-32b", base_url="https://openrouter.ai/api/v1", api_key=team_settings.openrouter_api_key),
+    model=OpenAIChat(
+        id="z-ai/glm-4-32b",
+        base_url="https://openrouter.ai/api/v1",
+        api_key=team_settings.openrouter_api_key,
+        max_completion_tokens=512,
+    ),
     add_datetime_to_instructions=True,
     instructions=dedent("""
         CRITICAL: You are the first agent in the pipeline. Your job is to classify the query and set the research depth.
@@ -52,7 +57,12 @@ research_planner = Agent(
     name="Research Planner",
     agent_id="research-planner",
     role="Creates efficient, focused research plans based on query classification",
-    model=OpenAIChat(id="openai/gpt-5-mini", base_url="https://openrouter.ai/api/v1", api_key=team_settings.openrouter_api_key),
+    model=OpenAIChat(
+        id="openai/gpt-5-mini",
+        base_url="https://openrouter.ai/api/v1",
+        api_key=team_settings.openrouter_api_key,
+        max_completion_tokens=1024,
+    ),
     tools=[DuckDuckGoTools(), Crawl4aiTools(), Newspaper4kTools()],
     add_datetime_to_instructions=True,
     instructions=dedent("""
@@ -89,7 +99,12 @@ research_planner = Agent(
 research_agent = Agent(
     name="Research Agent",
     agent_id="research-agent",
-    model=OpenAIChat(id="deepseek/deepseek-chat-v3-0324", base_url="https://openrouter.ai/api/v1", api_key=team_settings.openrouter_api_key),
+    model=OpenAIChat(
+        id="deepseek/deepseek-chat-v3-0324",
+        base_url="https://openrouter.ai/api/v1",
+        api_key=team_settings.openrouter_api_key,
+        max_completion_tokens=2048,
+    ),
     tools=[TavilyTools(api_key=team_settings.tavily_api_key), DuckDuckGoTools(), Crawl4aiTools(), Newspaper4kTools()],
     add_datetime_to_instructions=True,
     description="Intelligent researcher with adaptive depth based on query complexity",
@@ -157,7 +172,12 @@ research_agent = Agent(
 analysis_agent = Agent(
     name="Analysis Agent",
     agent_id="analysis-agent",
-    model=OpenAIChat(id="openai/gpt-oss-120b",base_url="https://openrouter.ai/api/v1", api_key=team_settings.openrouter_api_key),
+    model=OpenAIChat(
+        id="openai/gpt-oss-120b",
+        base_url="https://openrouter.ai/api/v1",
+        api_key=team_settings.openrouter_api_key,
+        max_completion_tokens=1536,
+    ),
     add_datetime_to_instructions=True,
     description="Efficient analyst focusing on high-impact insights and patterns",
     instructions=dedent("""
@@ -208,7 +228,12 @@ analysis_agent = Agent(
 writing_agent = Agent(
     name="Writing Agent",
     agent_id="writing-agent",
-    model=OpenAIChat(id="moonshotai/kimi-k2",base_url="https://openrouter.ai/api/v1", api_key=team_settings.openrouter_api_key),
+    model=OpenAIChat(
+        id="moonshotai/kimi-k2",
+        base_url="https://openrouter.ai/api/v1",
+        api_key=team_settings.openrouter_api_key,
+        max_completion_tokens=1536,
+    ),
     add_datetime_to_instructions=True,
     description="Professional writer creating engaging, concise content",
     instructions=dedent("""
@@ -285,7 +310,11 @@ def get_enova_deep_research_team(
             name="Enova Deep Research Team",
             team_id="enova-deep-research-team",
             mode="coordinate",
-            model=OpenAIChat(id="z-ai/glm-4.5", base_url="https://openrouter.ai/api/v1", api_key=team_settings.openrouter_api_key),
+            model=OpenAIChat(
+                id="z-ai/glm-4.5",
+                base_url="https://openrouter.ai/api/v1",
+                api_key=team_settings.openrouter_api_key,
+            ),
             members=[
                 query_classifier,
                 research_planner,
@@ -295,6 +324,10 @@ def get_enova_deep_research_team(
                 editor_agent,
             ],
             description="Enova Deep Research multi-agent team with adaptive depth and token optimization.",
+            enable_agentic_context=True,
+            share_member_interactions=True,
+            show_members_responses=True,
+            stream_intermediate_steps=True,
             instructions=dedent("""
 **SMART WORKFLOW COORDINATION:**
 
