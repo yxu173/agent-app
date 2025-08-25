@@ -46,6 +46,12 @@ async def selected_model() -> str:
     model_options = {
         "gpt-4o-mini": "gpt-4o-mini",
         "o3-mini": "o3-mini",
+        "openai/gpt-5-mini": "openai/gpt-5-mini",
+        "openai/gpt-5-nano": "openai/gpt-5-nano",
+        "openai/gpt-oss-120b": "openai/gpt-oss-120b",
+        "z-ai/glm-4.5": "z-ai/glm-4.5",
+        "z-ai/glm-4.5-air": "z-ai/glm-4.5-air",
+        "qwen/qwen3-235b-a22b-thinking-2507": "qwen/qwen3-235b-a22b-thinking-2507",
     }
     selected_model = st.sidebar.selectbox(
         "Choose a model",
