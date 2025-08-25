@@ -17,9 +17,9 @@ from workspace.settings import ws_settings
 # -*- Resources for the Production Environment
 #
 # Skip resource deletion when running `ag ws down` (set to True after initial deployment)
-skip_delete: bool = False
+skip_delete = False
 # Save resource outputs to workspace/outputs
-save_output: bool = True
+save_output = True
 
 # -*- Production image
 prd_image = DockerImage(
@@ -109,9 +109,10 @@ container_env = {
     "RUNTIME_ENV": "prd",
     # Get the OpenAI API key from the local environment
     "OPENAI_API_KEY": getenv("OPENAI_API_KEY"),
+    "OPENROUTER_API_KEY": getenv("OPENROUTER_API_KEY"),
     # Enable monitoring
-    "AGNO_MONITOR": "True",
-    "AGNO_API_KEY": getenv("AGNO_API_KEY"),
+  #  "AGNO_MONITOR": "False",
+  #  "AGNO_API_KEY": getenv("AGNO_API_KEY"),
     # SQLite database configuration
     "DB_FILE": "/tmp/agent_app.db",
     # Migrate database on startup using alembic
@@ -125,9 +126,10 @@ prd_streamlit = Streamlit(
     image=prd_image,
     command="streamlit run ui/Home.py",
     port_number=8501,
-    ecs_task_cpu="2048",
-    ecs_task_memory="4096",
-    ecs_service_count=1,
+    # Minimal resources for 10 users, 2 hours daily
+    ecs_task_cpu="512",           # Reduced from 2048 to 512 (0.5 vCPU)
+    ecs_task_memory="1024",       # Reduced from 4096 to 1024 (1 GB RAM)
+    ecs_service_count=1,          # Start with 1, scale up if needed
     ecs_cluster=prd_ecs_cluster,
     aws_secrets=[prd_secret],
     subnets=ws_settings.aws_subnet_ids,
@@ -151,11 +153,12 @@ prd_fastapi = FastApi(
     name=f"{ws_settings.prd_key}-api",
     group="api",
     image=prd_image,
-    command="uvicorn api.main:app --workers 2",
+    command="uvicorn api.main:app --workers 1",  # Reduced workers from 2 to 1
     port_number=8000,
-    ecs_task_cpu="1024",
-    ecs_task_memory="2048",
-    ecs_service_count=1,
+    # Minimal resources for 10 users, 2 hours daily
+    ecs_task_cpu="256",           # Reduced from 1024 to 256 (0.25 vCPU)
+    ecs_task_memory="512",        # Reduced from 2048 to 512 (0.5 GB RAM)
+    ecs_service_count=1,          # Start with 1, scale up if needed
     ecs_cluster=prd_ecs_cluster,
     aws_secrets=[prd_secret],
     subnets=ws_settings.aws_subnet_ids,

@@ -252,7 +252,7 @@ class ExcelProcessor(Workflow):
 
     # Excel Analysis Agent: Analyzes keywords for SEO value
     keyword_analyzer: Agent = Agent(
-        model=OpenAIChat(id="gpt-4o-mini"),
+        model=OpenAIChat(id="gpt-4o-mini", base_url="https://openrouter.ai/api/v1", api_key=os.getenv("OPENROUTER_API_KEY")),
         debug_mode=True,
         stream=True,
         instructions=dedent("""\
@@ -427,17 +427,27 @@ The instructions are finished, so after analyzing and understanding them well an
                         f"🤖 AI is analyzing keywords for SEO value in the {niche} niche..."
             )
 
-            # Analyze keywords
-            analysis_response: RunResponse = self.keyword_analyzer.run(keywords_text)
+            # Analyze keywords (handle streaming/generator and non-streaming responses)
+            analysis_result = self.keyword_analyzer.run(keywords_text)
+
+            last_response = None
+            try:
+                # If analysis_result is an iterator/generator, iterate to get the last response
+                for resp in analysis_result:  # type: ignore[assignment]
+                    last_response = resp
+            except TypeError:
+                # Not iterable; it's likely a single RunResponse
+                last_response = analysis_result
+
             if (
-                analysis_response is not None
-                and analysis_response.content is not None
-                and isinstance(analysis_response.content, ExcelChunkAnalysis)
+                last_response is not None
+                and getattr(last_response, "content", None) is not None
+                and isinstance(last_response.content, ExcelChunkAnalysis)
             ):
                 # Save results
                 keywords_data = []
                 valuable_keywords = []
-                for keyword_eval in analysis_response.content.valuable_keywords:
+                for keyword_eval in last_response.content.valuable_keywords:
                     keywords_data.append({
                         'keyword': keyword_eval.keyword,
                         'reason': keyword_eval.reason
