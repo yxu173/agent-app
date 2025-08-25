@@ -324,6 +324,25 @@ The instructions are finished, so after analyzing and understanding them well an
         structured_outputs=True,
     )
 
+    def set_model(self, model_id: Optional[str]) -> None:
+        """Update the underlying LLM model used by the keyword analyzer."""
+        try:
+            if model_id is None or not isinstance(model_id, str) or model_id.strip() == "":
+                return
+            # Prefer OpenRouter if OPENROUTER_API_KEY is set
+            openrouter_api_key = os.getenv("OPENROUTER_API_KEY")
+            if openrouter_api_key:
+                self.keyword_analyzer.model = OpenAIChat(
+                    id=model_id,
+                    base_url="https://openrouter.ai/api/v1",
+                    api_key=openrouter_api_key,
+                )
+            else:
+                # Fallback to default OpenAI provider with given id
+                self.keyword_analyzer.model = OpenAIChat(id=model_id)
+        except Exception as e:
+            logger.warning(f"Failed to set model to '{model_id}': {e}")
+
     def run(
         self,
         file_path: str,
@@ -832,7 +851,7 @@ def get_excel_processor(
     session_id: Optional[str] = None,
     debug_mode: bool = True
 ) -> ExcelProcessor:
-    return ExcelProcessor(
+    workflow = ExcelProcessor(
         workflow_id="excel-keyword-processor",
         user_id=user_id,
         session_id=session_id,
@@ -844,3 +863,9 @@ def get_excel_processor(
         ),
         debug_mode=debug_mode,
     )
+    try:
+        # Apply selected model if provided
+        workflow.set_model(model_id)
+    except Exception:
+        pass
+    return workflow

@@ -10,7 +10,6 @@ from agno.workflow import Workflow
 
 from ui.css import CUSTOM_CSS
 from ui.utils import (
-    about_agno,
     add_message,
     display_tool_calls,
     initialize_workflow_session_state,
@@ -47,6 +46,12 @@ async def sidebar(workflow: Workflow):
 
     # Session selector
     if workflow is not None and hasattr(workflow, 'storage') and workflow.storage is not None:
+        # Ensure model selection applies to the current workflow instance
+        try:
+            if hasattr(workflow, 'set_model'):
+                workflow.set_model(model_id)
+        except Exception:
+            pass
         await session_selector_workflow(workflow_name, workflow, get_excel_processor, "default_user", model_id)
 
     # Session info
@@ -152,9 +157,7 @@ async def sidebar(workflow: Workflow):
     st.sidebar.markdown("**📝 Instructions Guide:**")
     st.sidebar.markdown("""
     - Use `{niche}` as a placeholder for the niche/topic
-    - Instructions are saved to the database
     - Changes take effect immediately
-    - Updates are infrequent (monthly recommended)
     """)
 
 
@@ -242,14 +245,14 @@ async def body() -> None:
     with col1:
         niche = st.text_input(
             "🎯 Niche/Topic",
-            value="technology",
+            value="",
             help="The niche or topic for keyword analysis (e.g., 'health', 'finance', 'technology')"
         )
 
     with col2:
         chunk_size = st.selectbox(
             "📊 Chunk Size",
-            options=["50", "100", "200", "500"],
+            options=["50","75", "100", "150", "200", "500"],
             index=1,
             help="Number of rows to process at once"
         )
@@ -455,7 +458,6 @@ async def main():
         await initialize_workflow_session_state(workflow_name)
     await header()
     await body()
-    await about_agno()
 
 
 if __name__ == "__main__":
