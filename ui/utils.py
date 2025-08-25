@@ -25,11 +25,20 @@ async def initialize_agent_session_state(agent_name: str):
 
 async def initialize_team_session_state(team_name: str):
     logger.info(f"---*--- Initializing session state for {team_name} ---*---")
-    st.session_state[team_name] = {
-        "team": None,
-        "session_id": None,
-        "messages": [],
-    }
+    if team_name not in st.session_state:
+        st.session_state[team_name] = {
+            "team": None,
+            "session_id": None,
+            "messages": [],
+        }
+    else:
+        # Preserve existing state across reruns; only ensure required keys exist
+        if "team" not in st.session_state[team_name]:
+            st.session_state[team_name]["team"] = None
+        if "session_id" not in st.session_state[team_name]:
+            st.session_state[team_name]["session_id"] = None
+        if "messages" not in st.session_state[team_name]:
+            st.session_state[team_name]["messages"] = []
 
 
 async def initialize_workflow_session_state(workflow_name: str):
@@ -377,6 +386,42 @@ def export_chat_history(agent_name: str):
 
     chat_text = f"# {agent_name} - Chat History\n\n"
     for msg in st.session_state[agent_name]["messages"]:
+        role_label = "🤖 Assistant" if msg["role"] == "assistant" else "👤 User"
+        chat_text += f"### {role_label}\n{msg['content']}\n\n"
+
+        # Include tool calls if present
+        if msg.get("tool_calls"):
+            chat_text += "#### Tool Calls:\n"
+            for i, tool_call in enumerate(msg["tool_calls"]):
+                if isinstance(tool_call, ToolExecution):
+                    tool_name = tool_call.tool_name
+                    chat_text += f"**{i + 1}. {tool_name}**\n\n"
+                    if tool_call.tool_args is not None:
+                        chat_text += f"Arguments: ```json\n{tool_call.tool_args}\n```\n\n"
+                    if tool_call.result is not None:
+                        chat_text += f"Results: ```\n{tool_call.result}\n```\n\n"
+                else:
+                    tool_name = tool_call.get("name", "Unknown Tool")
+                    chat_text += f"**{i + 1}. {tool_name}**\n\n"
+                    if "arguments" in tool_call:
+                        chat_text += f"Arguments: ```json\n{tool_call['arguments']}\n```\n\n"
+                    if "content" in tool_call:
+                        chat_text += f"Results: ```\n{tool_call['content']}\n```\n\n"
+
+    return chat_text
+
+
+def export_team_chat_history(team_name: str):
+    """Export team chat history in markdown format.
+
+    Returns:
+        str: Formatted markdown string of the team chat history
+    """
+    if "messages" not in st.session_state[team_name] or not st.session_state[team_name]["messages"]:
+        return f"# {team_name} - Chat History\n\nNo messages to export."
+
+    chat_text = f"# {team_name} - Chat History\n\n"
+    for msg in st.session_state[team_name]["messages"]:
         role_label = "🤖 Assistant" if msg["role"] == "assistant" else "👤 User"
         chat_text += f"### {role_label}\n{msg['content']}\n\n"
 

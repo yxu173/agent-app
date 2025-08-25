@@ -26,12 +26,13 @@ container_env = {
     "RUNTIME_ENV": "dev",
     # Get the OpenAI API key and Exa API key from the local environment
     "OPENAI_API_KEY": getenv("OPENAI_API_KEY"),
+    "OPENROUTER_API_KEY": getenv("OPENROUTER_API_KEY"),
    # "EXA_API_KEY": getenv("EXA_API_KEY"),
     # Enable monitoring
     #"AGNO_MONITOR": "True",
     #"AGNO_API_KEY": getenv("AGNO_API_KEY"),
     # SQLite database configuration
-    "DB_FILE": "tmp/agent_app.db",
+    "DB_FILE": "/tmp/agent_app.db",
     # Migrate database on startup using alembic
     "MIGRATE_DB": True,
 }

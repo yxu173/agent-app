@@ -13,6 +13,7 @@ from ui.utils import (
     display_tool_calls,
     example_inputs,
     initialize_team_session_state,
+    export_team_chat_history,
 )
 
 # Apply nest_asyncio to handle nested event loops
@@ -60,6 +61,9 @@ async def body() -> None:
     ####################################################################
     # Get user input
     ####################################################################
+    # Prepare a sidebar container for export (we will render after responses)
+    export_container = st.sidebar.container()
+
     if prompt := st.chat_input("🔍 What should we research?"):
         await add_message(team_name, "user", prompt)
 
@@ -139,137 +143,151 @@ async def body() -> None:
                 try:
                     # Run the team and stream the response
                     run_response = await team.arun(user_message, stream=True)
-                    async for resp_chunk in run_response:
-                        # Display tool calls if available
-                        if hasattr(resp_chunk, 'tools') and resp_chunk.tools and len(resp_chunk.tools) > 0:
-                            display_tool_calls(tool_calls_container, resp_chunk.tools)
-                        # Stream member agent events into their respective sections
-                        try:
-                            # Normalize to a list of event-like items
-                            event_items = []
-                            if hasattr(resp_chunk, 'events') and resp_chunk.events:
-                                event_items.extend(resp_chunk.events)
-                            # Also treat the current chunk as an event if it has agent metadata
-                            if hasattr(resp_chunk, 'agent_name') or hasattr(resp_chunk, 'agent_id'):
-                                event_items.append(resp_chunk)
-                            for ev in event_items:
-                                agent_name = getattr(ev, 'agent_name', None)
-                                agent_id = getattr(ev, 'agent_id', None)
-                                event_content = getattr(ev, 'content', None)
-                                # Also capture reasoning/think-aloud if present
-                                reasoning_extra = ""
-                                try:
-                                    rc = getattr(ev, 'reasoning_content', None)
-                                    th = getattr(ev, 'thinking', None)
-                                    if rc:
-                                        reasoning_extra += str(rc)
-                                    if th:
-                                        reasoning_extra += "\n" + str(th)
-                                except Exception:
-                                    pass
-                                if not event_content and not reasoning_extra:
-                                    continue
-                                # Determine section title from name or id
-                                sec_title = None
-                                if agent_name:
-                                    sec_title = agent_name
-                                elif agent_id and agent_id in id_to_title:
-                                    sec_title = id_to_title[agent_id]
-                                if not sec_title:
-                                    continue
-                                # Normalize base title
-                                if sec_title.endswith(" Agent"):
-                                    base_title = sec_title.replace(" Agent", "")
-                                else:
-                                    base_title = sec_title
-                                # Find or create the section index for this agent
-                                target_idx = None
-                                for i, sec in enumerate(st.session_state[team_name]["agent_sections"]):
-                                    if sec.get("title") in {base_title, sec_title}:
-                                        target_idx = i
+                    try:
+                        async for resp_chunk in run_response:
+                            # Display tool calls if available
+                            if hasattr(resp_chunk, 'tools') and resp_chunk.tools and len(resp_chunk.tools) > 0:
+                                display_tool_calls(tool_calls_container, resp_chunk.tools)
+                            # Stream member agent events into their respective sections
+                            try:
+                                # Normalize to a list of event-like items
+                                event_items = []
+                                if hasattr(resp_chunk, 'events') and resp_chunk.events:
+                                    event_items.extend(resp_chunk.events)
+                                # Also treat the current chunk as an event if it has agent metadata
+                                if hasattr(resp_chunk, 'agent_name') or hasattr(resp_chunk, 'agent_id'):
+                                    event_items.append(resp_chunk)
+                                for ev in event_items:
+                                    agent_name = getattr(ev, 'agent_name', None)
+                                    agent_id = getattr(ev, 'agent_id', None)
+                                    event_content = getattr(ev, 'content', None)
+                                    # Also capture reasoning/think-aloud if present
+                                    reasoning_extra = ""
+                                    try:
+                                        rc = getattr(ev, 'reasoning_content', None)
+                                        th = getattr(ev, 'thinking', None)
+                                        if rc:
+                                            reasoning_extra += str(rc)
+                                        if th:
+                                            reasoning_extra += "\n" + str(th)
+                                    except Exception:
+                                        pass
+                                    if not event_content and not reasoning_extra:
+                                        continue
+                                    # Determine section title from name or id
+                                    sec_title = None
+                                    if agent_name:
+                                        sec_title = agent_name
+                                    elif agent_id and agent_id in id_to_title:
+                                        sec_title = id_to_title[agent_id]
+                                    if not sec_title:
+                                        continue
+                                    # Normalize base title
+                                    if sec_title.endswith(" Agent"):
+                                        base_title = sec_title.replace(" Agent", "")
+                                    else:
+                                        base_title = sec_title
+                                    # Find or create the section index for this agent
+                                    target_idx = None
+                                    for i, sec in enumerate(st.session_state[team_name]["agent_sections"]):
+                                        if sec.get("title") in {base_title, sec_title}:
+                                            target_idx = i
+                                            break
+                                    if target_idx is None:
+                                        # Create a new section at the end
+                                        st.session_state[team_name]["agent_sections"].append({"title": base_title, "content": ""})
+                                        target_idx = len(st.session_state[team_name]["agent_sections"]) - 1
+                                    # Append streamed content
+                                    to_append = ""
+                                    if event_content:
+                                        to_append += str(event_content)
+                                    if reasoning_extra:
+                                        to_append += ("\n" if to_append else "") + reasoning_extra
+                                    st.session_state[team_name]["agent_sections"][target_idx]["content"] += to_append
+                                    # Mirror Editor output into main response area as it streams
+                                    try:
+                                        if base_title == "Editor" or (sec_title and sec_title == "Editor Agent"):
+                                            final_response += to_append
+                                    except Exception:
+                                        pass
+                                # Re-render agent steps with latest streamed content
+                                render_agent_steps()
+                            except Exception:
+                                pass
+                            # Display response
+                            if resp_chunk.content is not None:
+                                chunk = resp_chunk.content
+                                # Parse for one or more activation markers in the chunk
+                                processed_pos = 0
+                                while True:
+                                    # Find the next marker occurrence in the remaining text
+                                    next_marker_pos = None
+                                    next_marker_key = None
+                                    for m in marker_order:
+                                        pos = chunk.find(m, processed_pos)
+                                        if pos != -1 and (next_marker_pos is None or pos < next_marker_pos):
+                                            next_marker_pos = pos
+                                            next_marker_key = m
+
+                                    if next_marker_pos is None:
+                                        # No more markers; append remaining text to current section or final response
+                                        remaining = chunk[processed_pos:]
+                                        if remaining:
+                                            if current_section_idx is None:
+                                                # Buffer pre-marker content; render later only if no markers ever appear (SIMPLE flow)
+                                                buffered_simple += remaining
+                                            else:
+                                                # Ensure section exists
+                                                while len(st.session_state[team_name]["agent_sections"]) <= current_section_idx:
+                                                    st.session_state[team_name]["agent_sections"].append({"title": "", "content": ""})
+                                                st.session_state[team_name]["agent_sections"][current_section_idx]["content"] += remaining
+                                                # Mirror Editor Agent output into main response area
+                                                current_title = st.session_state[team_name]["agent_sections"][current_section_idx]["title"]
+                                                if current_title == "Editor Agent":
+                                                    final_response += remaining
+                                                # Re-render agent steps
+                                                render_agent_steps()
                                         break
-                                if target_idx is None:
-                                    # Create a new section at the end
-                                    st.session_state[team_name]["agent_sections"].append({"title": base_title, "content": ""})
-                                    target_idx = len(st.session_state[team_name]["agent_sections"]) - 1
-                                # Append streamed content
-                                to_append = ""
-                                if event_content:
-                                    to_append += str(event_content)
-                                if reasoning_extra:
-                                    to_append += ("\n" if to_append else "") + reasoning_extra
-                                st.session_state[team_name]["agent_sections"][target_idx]["content"] += to_append
-                            # Re-render agent steps with latest streamed content
-                            render_agent_steps()
+
+                                    else:
+                                        # Append text before the marker to the appropriate target
+                                        before = chunk[processed_pos:next_marker_pos]
+                                        if before:
+                                            if current_section_idx is None:
+                                                # Buffer pre-marker content; render later only if no markers ever appear (SIMPLE flow)
+                                                buffered_simple += before
+                                            else:
+                                                while len(st.session_state[team_name]["agent_sections"]) <= current_section_idx:
+                                                    st.session_state[team_name]["agent_sections"].append({"title": "", "content": ""})
+                                                st.session_state[team_name]["agent_sections"][current_section_idx]["content"] += before
+                                                # Mirror Editor Agent output into main response area
+                                                current_title = st.session_state[team_name]["agent_sections"][current_section_idx]["title"]
+                                                if current_title == "Editor Agent":
+                                                    final_response += before
+                                        # Move cursor past the marker text and switch current section
+                                        processed_pos = next_marker_pos + len(next_marker_key)
+                                        section_title = activation_markers[next_marker_key]
+                                        # Find existing section by title; create only if absent
+                                        existing_idx = None
+                                        for i, sec in enumerate(st.session_state[team_name]["agent_sections"]):
+                                            if sec.get("title") == section_title:
+                                                existing_idx = i
+                                                break
+                                        if existing_idx is None:
+                                            st.session_state[team_name]["agent_sections"].append({"title": section_title, "content": ""})
+                                            current_section_idx = len(st.session_state[team_name]["agent_sections"]) - 1
+                                        else:
+                                            current_section_idx = existing_idx
+                                        markers_seen = True
+                                        # Render updated agent steps with the new section header
+                                        render_agent_steps()
+                    finally:
+                        # Ensure async stream is properly closed to prevent sniffio/httpcore warnings
+                        try:
+                            if hasattr(run_response, 'aclose') and callable(getattr(run_response, 'aclose')):
+                                await run_response.aclose()
                         except Exception:
                             pass
-                        # Display response
-                        if resp_chunk.content is not None:
-                            chunk = resp_chunk.content
-                            # Parse for one or more activation markers in the chunk
-                            processed_pos = 0
-                            while True:
-                                # Find the next marker occurrence in the remaining text
-                                next_marker_pos = None
-                                next_marker_key = None
-                                for m in marker_order:
-                                    pos = chunk.find(m, processed_pos)
-                                    if pos != -1 and (next_marker_pos is None or pos < next_marker_pos):
-                                        next_marker_pos = pos
-                                        next_marker_key = m
-
-                                if next_marker_pos is None:
-                                    # No more markers; append remaining text to current section or final response
-                                    remaining = chunk[processed_pos:]
-                                    if remaining:
-                                        if current_section_idx is None:
-                                            # Buffer pre-marker content; render later only if no markers ever appear (SIMPLE flow)
-                                            buffered_simple += remaining
-                                        else:
-                                            # Ensure section exists
-                                            while len(st.session_state[team_name]["agent_sections"]) <= current_section_idx:
-                                                st.session_state[team_name]["agent_sections"].append({"title": "", "content": ""})
-                                            st.session_state[team_name]["agent_sections"][current_section_idx]["content"] += remaining
-                                            # Mirror Editor Agent output into main response area
-                                            current_title = st.session_state[team_name]["agent_sections"][current_section_idx]["title"]
-                                            if current_title == "Editor Agent":
-                                                final_response += remaining
-                                            # Re-render agent steps
-                                            render_agent_steps()
-                                    break
-
-                                else:
-                                    # Append text before the marker to the appropriate target
-                                    before = chunk[processed_pos:next_marker_pos]
-                                    if before:
-                                        if current_section_idx is None:
-                                            # Buffer pre-marker content; render later only if no markers ever appear (SIMPLE flow)
-                                            buffered_simple += before
-                                        else:
-                                            while len(st.session_state[team_name]["agent_sections"]) <= current_section_idx:
-                                                st.session_state[team_name]["agent_sections"].append({"title": "", "content": ""})
-                                            st.session_state[team_name]["agent_sections"][current_section_idx]["content"] += before
-                                            # Mirror Editor Agent output into main response area
-                                            current_title = st.session_state[team_name]["agent_sections"][current_section_idx]["title"]
-                                            if current_title == "Editor Agent":
-                                                final_response += before
-                                    # Move cursor past the marker text and switch current section
-                                    processed_pos = next_marker_pos + len(next_marker_key)
-                                    section_title = activation_markers[next_marker_key]
-                                    # Find existing section by title; create only if absent
-                                    existing_idx = None
-                                    for i, sec in enumerate(st.session_state[team_name]["agent_sections"]):
-                                        if sec.get("title") == section_title:
-                                            existing_idx = i
-                                            break
-                                    if existing_idx is None:
-                                        st.session_state[team_name]["agent_sections"].append({"title": section_title, "content": ""})
-                                        current_section_idx = len(st.session_state[team_name]["agent_sections"]) - 1
-                                    else:
-                                        current_section_idx = existing_idx
-                                    markers_seen = True
-                                    # Render updated agent steps with the new section header
-                                    render_agent_steps()
 
                     # Post-run enrichment: recursively backfill agent sections from member_responses
                     try:
@@ -372,6 +390,45 @@ async def body() -> None:
                     # Get final response from team object
                     if team.run_response and hasattr(team.run_response, 'content') and team.run_response.content:
                         final_response = team.run_response.content
+                    # If still empty, try to use Editor section content
+                    if not final_response:
+                        try:
+                            for sec in st.session_state[team_name].get("agent_sections", []):
+                                t = sec.get("title")
+                                if t in ("Editor Agent", "Editor") and sec.get("content"):
+                                    final_response = str(sec["content"]) or final_response
+                                    break
+                        except Exception:
+                            pass
+                    # As a last resort, search member_responses for editor content
+                    if not final_response:
+                        try:
+                            def extract_editor_text(resp):
+                                out = ""
+                                try:
+                                    name = getattr(resp, 'agent_name', None) or getattr(resp, 'team_name', None)
+                                    aid = getattr(resp, 'agent_id', None)
+                                    text = getattr(resp, 'content', None)
+                                    if name and ('Editor' in str(name)) and text:
+                                        out += str(text)
+                                    if aid and aid in ('editor-agent', 'editor_agent') and text:
+                                        out += str(text)
+                                    events = getattr(resp, 'events', None)
+                                    if events:
+                                        for ev in events:
+                                            evc = getattr(ev, 'content', None)
+                                            if evc:
+                                                out += str(evc)
+                                    nested = getattr(resp, 'member_responses', None)
+                                    if nested:
+                                        for n in nested:
+                                            out += extract_editor_text(n)
+                                except Exception:
+                                    pass
+                                return out
+                            final_response = extract_editor_text(team.run_response) or final_response
+                        except Exception:
+                            pass
                     
                     resp_container.markdown(final_response)
 
@@ -384,6 +441,19 @@ async def body() -> None:
                     error_message = f"Sorry, I encountered an error: {str(e)}"
                     await add_message(team_name, "assistant", error_message)
                     st.error(error_message)
+
+    # Sidebar utilities: export team chat (rendered after assistant messages are appended)
+    with export_container:
+        fn = f"{team_name}_chat_history.md"
+        if team_name in st.session_state and st.session_state[team_name].get("session_id"):
+            fn = f"{team_name}_{st.session_state[team_name]['session_id']}.md"
+        st.download_button(
+            ":file_folder: Export Team Chat",
+            export_team_chat_history(team_name),
+            file_name=fn,
+            mime="text/markdown",
+            key="export_team_chat_btn",
+        )
 
 async def main():
     try:
