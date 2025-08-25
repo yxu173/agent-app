@@ -76,16 +76,28 @@ setup_dev() {
 check_env_vars() {
     print_status "Checking environment variables..."
     
-    if [ -z "$OPENAI_API_KEY" ]; then
-        print_warning "OPENAI_API_KEY is not set. Please set it:"
-        echo "export OPENAI_API_KEY='your-openai-api-key'"
-        read -p "Do you want to continue anyway? (y/N): " -n 1 -r
-        echo
-        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-            exit 1
-        fi
-    else
+    local has_openai=false
+    local has_openrouter=false
+
+    if [ -n "$OPENAI_API_KEY" ]; then
+        has_openai=true
         print_success "OPENAI_API_KEY is set"
+    else
+        print_warning "OPENAI_API_KEY is not set"
+    fi
+
+    if [ -n "$OPENROUTER_API_KEY" ]; then
+        has_openrouter=true
+        print_success "OPENROUTER_API_KEY is set"
+    else
+        print_warning "OPENROUTER_API_KEY is not set"
+    fi
+
+    if [ "$has_openai" = false ] && [ "$has_openrouter" = false ]; then
+        print_warning "No LLM provider keys detected. Set at least one of:"
+        echo "  export OPENAI_API_KEY='sk-...'"
+        echo "  export OPENROUTER_API_KEY='or-...'"
+        print_warning "Continuing without keys may limit functionality."
     fi
 }
 

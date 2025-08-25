@@ -33,6 +33,7 @@ fi
 if [[ "$MIGRATE_DB" = true || "$MIGRATE_DB" = True ]]; then
   echo "++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
   echo "Migrating Database"
+  alembic -c db/alembic.ini revision --autogenerate -m "Auto-generated migration"
   alembic -c db/alembic.ini upgrade head
   echo "++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
 fi

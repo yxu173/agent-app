@@ -75,10 +75,18 @@ async def sidebar(workflow: Workflow):
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                     )
 
-    # Clear session button (just clears UI state, not backend)
-    if st.sidebar.button("🗑️ Clear Current Session"):
-        if workflow_name in st.session_state:
-            st.session_state[workflow_name] = {}
+    # New session button
+    if st.sidebar.button("✨ New Session"):
+        await initialize_workflow_session_state(workflow_name)
+        
+        # Clear UI widget states by resetting their session state keys
+        if "file_uploader" in st.session_state:
+            del st.session_state["file_uploader"]
+        if "niche_input" in st.session_state:
+            st.session_state.niche_input = ""  # Reset to default
+        if "chunk_size_selector" in st.session_state:
+            st.session_state.chunk_size_selector = "75"  # Reset to default
+
         st.rerun()
 
     # Settings Configuration Section
@@ -220,7 +228,8 @@ async def body() -> None:
     uploaded_file = st.file_uploader(
         "Choose an Excel file (.xlsx, .xls)",
         type=['xlsx', 'xls'],
-        help="Upload an Excel file containing keywords to analyze"
+        help="Upload an Excel file containing keywords to analyze",
+        key="file_uploader"
     )
 
     if uploaded_file is not None:
@@ -245,16 +254,16 @@ async def body() -> None:
     with col1:
         niche = st.text_input(
             "🎯 Niche/Topic",
-            value="",
-            help="The niche or topic for keyword analysis (e.g., 'health', 'finance', 'technology')"
+            help="The niche or topic for keyword analysis (e.g., 'health', 'finance', 'technology')",
+            key="niche_input"
         )
 
     with col2:
         chunk_size = st.selectbox(
             "📊 Chunk Size",
             options=["50","75", "100", "150", "200", "500"],
-            index=1,
-            help="Number of rows to process at once"
+            help="Number of rows to process at once",
+            key="chunk_size_selector"
         )
 
     ####################################################################
@@ -456,6 +465,13 @@ async def main():
     # Only initialize if not already present
     if workflow_name not in st.session_state:
         await initialize_workflow_session_state(workflow_name)
+
+    # Initialize widget states if they are not already set
+    if "chunk_size_selector" not in st.session_state:
+        st.session_state.chunk_size_selector = "75"  # Default value
+    if "niche_input" not in st.session_state:
+        st.session_state.niche_input = ""  # Default value
+
     await header()
     await body()
 
