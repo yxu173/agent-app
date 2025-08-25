@@ -143,17 +143,17 @@ async def example_inputs(agent_name: str) -> None:
     """Show example inputs for an Agent."""
     with st.sidebar:
         st.markdown("#### :thinking_face: Try me!")
-        if st.button("Who are you?"):
+        if st.button("SEO Research"):
             await add_message(
                 agent_name,
                 "user",
-                "Who are you?",
+                "SEO Research",
             )
-        if st.button("What is your purpose?"):
+        if st.button("Deep Research"):
             await add_message(
                 agent_name,
                 "user",
-                "What is your purpose?",
+                "Deep Research",
             )
 
         # Agent-specific examples

@@ -37,12 +37,6 @@ query_classifier = Agent(
         CLASSIFICATION: [SIMPLE/MODERATE/DEEP]
         REASONING: [Brief explanation]
         RESEARCH_SCOPE: [If MODERATE/DEEP, provide 2-4 key subtopics to focus on]
-        ESTIMATED_TOKEN_BUDGET: [LOW/MEDIUM/HIGH based on classification]
-        
-        **Token Optimization:**
-        - SIMPLE: Suggest direct response without full pipeline
-        - MODERATE: Recommend focused research on 1-2 subtopics
-        - DEEP: Full multi-agent pipeline with comprehensive analysis
         
         **Examples:**
         - "Hi, how are you?" → SIMPLE
@@ -66,31 +60,49 @@ research_planner = Agent(
     tools=[DuckDuckGoTools(), Crawl4aiTools(), Newspaper4kTools()],
     add_datetime_to_instructions=True,
     instructions=dedent("""
-        **EFFICIENCY FIRST:** Read the query classification and adapt your research plan accordingly.
-        
-        **For MODERATE queries:**
-        - Focus on 1-2 core subtopics maximum
-        - Prioritize recent, authoritative sources
-        - Limit search scope to avoid token waste
-        
-        **For DEEP queries:**
-        - Break into 3-5 strategic subtopics
-        - Include diverse source types (academic, news, expert opinions)
-        - Plan for comprehensive but focused research
-        
-        **Output Structure:**
+        **Objective:** Your primary role is to create a highly efficient and targeted research plan based on the query classification provided. Your plan must be optimized for token usage and research quality.
+
+        **Core Responsibilities:**
+        1.  **Analyze Classification:** Carefully review the query classification (MODERATE/DEEP) and reasoning from the Query Classifier.
+        2.  **Develop Strategy:** Formulate a research strategy that is appropriate for the classification.
+        3.  **Produce Plan:** Output a structured research plan for the Research Agent to follow.
+
+        **Workflow by Query Type:**
+
+        **For MODERATE Queries:**
+        -   **Scope:** Strictly limit the research to 1-2 core subtopics. Do not go broader.
+        -   **Sources:** Prioritize recent (last 2 years), high-authority sources (e.g., major news outlets, official reports, academic papers).
+        -   **Strategy:** Develop 2-3 precise search queries. The goal is to get high-quality information quickly.
+
+        **For DEEP Queries:**
+        -   **Scope:** Deconstruct the main topic into 3-5 distinct, strategic subtopics. Ensure comprehensive coverage of the user's request.
+        -   **Sources:** Plan to use a diverse range of sources, including academic journals, news articles, expert opinions, and official documentation.
+        -   **Strategy:** Design a multi-stage research process. For each subtopic, create 2-4 targeted search queries. Consider how subtopics might relate to each other.
+
+        **Mandatory Output Structure:**
         ## Research Plan
-        **Query Type:** [From classifier]
-        **Priority Subtopics:** [Numbered list, 1-5 max]
-        **Search Strategy:** [Keyword combinations for each subtopic]
-        **Source Targets:** [Types of sources to prioritize]
-        **Token Budget:** [Estimated tokens needed per subtopic]
+        **Query Classification:** [MODERATE/DEEP]
         
-        **Quality Filters:**
-        - Take into account the current date: {current_date}
-        - Prioritize sources from last 2 years unless historical context needed
-        - Focus on authoritative domains (.edu, .gov, major publications)
-        - Skip redundant or low-quality sources
+        ### 1. Priority Subtopic: [Title of Subtopic 1]
+        -   **Rationale:** [Briefly explain why this subtopic is important]
+        -   **Search Queries:**
+            -   `[Search query 1]`
+            -   `[Search query 2]`
+        -   **Source Targets:** [e.g., Academic journals, news reports]
+
+        ### 2. Priority Subtopic: [Title of Subtopic 2]
+        -   **Rationale:** [Briefly explain why this subtopic is important]
+        -   **Search Queries:**
+            -   `[Search query 1]`
+            -   `[Search query 2]`
+        
+        *(Add more subtopics as needed for DEEP queries)*
+
+        ---
+        **Execution Guidelines:**
+        -   **Date Context:** Be mindful of the current date: {current_date}. Prioritize recent information unless historical context is required.
+        -   **Source Quality:** Focus on authoritative domains (.edu, .gov, respected news organizations).
+        -   **Avoid Redundancy:** Explicitly instruct the next agent to avoid exploring sources that seem to offer overlapping information.
     """),
     markdown=True,
 )
@@ -100,72 +112,63 @@ research_agent = Agent(
     name="Research Agent",
     agent_id="research-agent",
     model=OpenAIChat(
-        id="deepseek/deepseek-chat-v3-0324",
+        id="qwen/qwen3-235b-a22b-thinking-2507",
         base_url="https://openrouter.ai/api/v1",
         api_key=team_settings.openrouter_api_key,
-        max_completion_tokens=2048,
     ),
     tools=[TavilyTools(api_key=team_settings.tavily_api_key), DuckDuckGoTools(), Crawl4aiTools(), Newspaper4kTools()],
     add_datetime_to_instructions=True,
     description="Intelligent researcher with adaptive depth based on query complexity",
     instructions=dedent("""
-        **ADAPTIVE RESEARCH:** Follow the research plan and query classification strictly.
-        
-        **Token Optimization Rules:**
-        1. For MODERATE queries: Maximum 3 targeted searches, focus on quality over quantity
-        2. For DEEP queries: Up to 6-8 strategic searches across subtopics
-        3. Always start with Tavily (more comprehensive), fallback to DuckDuckGo if needed
-        4. Skip duplicate or low-value sources immediately
-        
-        **Research Methodology:**
-        - Use specific, targeted search terms from the research plan
-        - Extract only relevant information, ignore tangential content
-        - Summarize findings concisely but comprehensively
-        - Track source credibility and recency
-        
-        **Error Handling:**
-        - If tools fail, provide clear error explanation
-        - Continue research with available tools
-        - Never fail silently - always return actionable output
-        
-        **Output Efficiency:**
-        - Lead with executive summary (2-3 sentences)
-        - Organize findings by subtopic from research plan
-        - Include only high-impact quotes and statistics
-        - Maintain source links but avoid excessive citation bloat
-        - **CRITICAL:** Always format sources as working markdown links: [Source Name](URL)
-    """),
-    expected_output=dedent("""
-        # Research Summary: {Topic}
-        
-        **Executive Summary:** {2-3 sentence overview of key findings}
-        
-        ## Key Findings by Subtopic
-        
-        ### {Subtopic 1}
-        - **Core Finding:** {Most important insight}
-        - **Supporting Data:** {Key statistics or evidence}
-        - **Source Quality:** {Assessment of source reliability}
-        
-        ### {Subtopic 2}
-        - **Core Finding:** {Most important insight}
-        - **Supporting Data:** {Key statistics or evidence}
-        - **Source Quality:** {Assessment of source reliability}
-        
-        ## Source Summary
-        **Primary Sources:** 
-        - [{Source 1}]({URL})
-        - [{Source 2}]({URL})
-        - [{Source 3}]({URL}) (if available)
-        
-        **Research Depth:** {MODERATE/DEEP based on classification}
-        **Search Success Rate:** {X/Y successful searches}
-        
-        ## Research Gaps
-        {Any limitations or areas needing follow-up}
-    """),
-    markdown=True,
-    show_tool_calls=True,
+        You are a **research agent** designed to conduct **in-depth, methodical investigations** into user questions. Your goal is to produce a **comprehensive, well-structured, and accurately cited report** using **authoritative sources**. You will use available tools to gather detailed information, analyze it, and synthesize a final response.
+
+### **Tool Use Rules (Strictly Enforced)**
+
+1. **Use correct arguments**: Always use actual values — never pass variable names (e.g., use "Paris" not {city}).
+2. **Call tools only when necessary**: If you can answer from prior results, do so — **do not search unnecessarily**. However, All cited **url in the report must be visited**, and all **entities (People, Organization, Location, etc.) mentioned on the report must be searched/visited**. 
+3. **Terminate When Full Coverage Is Achieved** Conclude tool usage and deliver a final response only when the investigation has achieved **comprehensive coverage** of the topic. This means not only gathering sufficient data to answer the question but also ensuring all critical aspects—context, subtopics, and nuances—are adequately addressed. Once the analysis is complete and no further tool use would add meaningful value, **immediately stop searching and provide a direct, fully formed response**.
+4. **Visit all urls:** All cited **url in the report must be visited**, and all **entities mentioned on the report must be browsed**.
+5. **Avoid repetition**: Never repeat the same tool call with identical arguments. If you detect a cycle (e.g., repeating the same search), **stop and answer based on available data**.
+6. **Track progress**: Treat each tool call as a step in a plan. After each result, ask: "Did you have full coverage?" and "What is the next step?"
+7. **Limit tool usage**: If you've used a tool multiple times without progress, **reassess and attempt to conclude** — do not continue indefinitely.
+8. **Use proper format**: MARK sure you wrap tool calls in XML tags as shown in the example.
+
+### Output Format Requirements
+
+At the end, respond **only** with a **self-contained markdown report**. Do not include tool calls or internal reasoning in the final output.
+
+Example structure:
+```markdown
+# [Clear Title]
+
+## Overview
+...
+
+## Key Findings
+- Finding 1 [1]
+- Finding 2 [2]
+
+## Detailed Analysis
+...
+
+## References
+[1] https://example.com/source1  
+[2] https://example.com/study2  
+...
+
+Goal
+
+Answer with depth, precision, and scholarly rigor. You will be rewarded for:
+
+Thoroughness in research
+Use of high-quality sources when available (.gov, .edu, peer-reviewed, reputable media)
+Clear, structured reporting
+Efficient path to completion without redundancy
+
+Now Begin! If you solve the task correctly, you will receive a reward of $1,000,000.
+
+        """),
+   markdown=True,
 )
 
 # --- Streamlined Analysis Agent ---
@@ -176,7 +179,6 @@ analysis_agent = Agent(
         id="openai/gpt-oss-120b",
         base_url="https://openrouter.ai/api/v1",
         api_key=team_settings.openrouter_api_key,
-        max_completion_tokens=1536,
     ),
     add_datetime_to_instructions=True,
     description="Efficient analyst focusing on high-impact insights and patterns",
@@ -189,37 +191,11 @@ analysis_agent = Agent(
         3. **Gap Analysis:** Note missing information or conflicting viewpoints
         4. **Impact Assessment:** Highlight most significant implications
         
-        **Token Efficiency:**
-        - Lead with core insights (3-4 bullet points max)
-        - Focus on novel or surprising findings
-        - Avoid restating research findings verbatim
-        - Synthesize rather than summarize
-        
         **Quality Filters:**
         - Flag low-credibility sources
         - Identify potential biases
         - Note temporal relevance of findings
         - Highlight expert consensus vs. outlier opinions
-    """),
-    expected_output=dedent("""
-        # Analysis Report: {Topic}
-        
-        ## Core Insights
-        1. **Primary Pattern:** {Most significant trend or finding}
-        2. **Key Implication:** {Most important consequence or meaning}
-        3. **Notable Gap:** {Missing information or conflicting data}
-        
-        ## Credibility Assessment
-        - **Strong Sources:** {Number and brief description}
-        - **Weak Sources:** {Any sources to treat cautiously}
-        - **Expert Consensus:** {Level of agreement among authorities}
-        
-        ## Strategic Implications
-        {2-3 sentences on broader significance}
-        
-        ## Recommendation for Writing
-        **Focus Areas:** {Top 2-3 points for final article}
-        **Narrative Arc:** {Suggested structure for compelling story}
     """),
     markdown=True,
 )
@@ -232,7 +208,6 @@ writing_agent = Agent(
         id="moonshotai/kimi-k2",
         base_url="https://openrouter.ai/api/v1",
         api_key=team_settings.openrouter_api_key,
-        max_completion_tokens=1536,
     ),
     add_datetime_to_instructions=True,
     description="Professional writer creating engaging, concise content",
@@ -247,8 +222,6 @@ writing_agent = Agent(
         - Maintain journalistic objectivity
         
         **Length Guidelines:**
-        - MODERATE topics: 300-500 words
-        - DEEP topics: 600-1000 words
         - Always prioritize clarity over length
         
         **Engagement Elements:**
@@ -267,6 +240,7 @@ editor_agent = Agent(
     name="Editor Agent",
     agent_id="editor-agent",
     model=Gemini(id="gemini-2.5-pro", api_key=team_settings.google_api_key),
+    tools=[DuckDuckGoTools(), Crawl4aiTools(), Newspaper4kTools()],
     add_datetime_to_instructions=True,
     description="Efficient editor ensuring quality while maintaining conciseness",
     instructions=dedent("""
@@ -379,20 +353,10 @@ You are the team coordinator for an intelligent research team. Your job is to or
 - **CRITICAL:** Always include the activation marker as the first line when transferring to any agent
 - **CRITICAL:** Do not include activation markers in the final output - they are for UI tracking only
 
-**Token Efficiency Tracking:**
-- Log estimated tokens used at each step
-- Provide final efficiency report
-- Suggest optimizations for future similar queries
-
 **Error Handling:**
 - Never stop workflow due to single agent failure
 - Pass error context to subsequent agents
 - Maintain workflow continuity
-
-**Final Output Standards:**
-- SIMPLE: Direct response (50-100 words)
-- MODERATE: Focused article (300-500 words)
-- DEEP: Comprehensive report (600-1000 words)
 
 **Source Requirements:**
 - All sources MUST be formatted as working markdown links: [Source Name](URL)
@@ -405,35 +369,6 @@ You are the team coordinator for an intelligent research team. Your job is to or
             markdown=True,
             enable_team_history=True,
             num_of_interactions_from_history=3,
-            expected_output=dedent("""
-                **For Simple Queries:**
-                Friendly, direct response without full research pipeline.
-                
-                **For Moderate/Deep Queries:**
-                # {Engaging Headline}
-                
-                ## Key Insights
-                {Core findings and analysis}
-                
-                ## Background & Context
-                {Essential context only}
-                
-                ## Main Findings
-                {Research results organized by importance}
-                
-                ## Implications
-                {Significance and next steps}
-                
-                ## Sources
-                {Clean citation list with working links in markdown format: [Source Name](URL)}
-                
-                ---
-                **Research Efficiency Report:**
-                - Query Classification: {SIMPLE/MODERATE/DEEP}
-                - Agents Used: {X of 6}
-                - Estimated Tokens: {Approximate count}
-                - Research Quality: {High/Medium}
-            """),
             storage=SqliteStorage(
                 table_name="enova_deep_research_team",
                 db_url=db_url,

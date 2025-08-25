@@ -4,6 +4,7 @@ import streamlit as st
 from agno.team import Team
 from agno.tools.streamlit.components import check_password
 from agno.utils.log import logger
+from markdown_it import MarkdownIt
 
 from teams import get_enova_deep_research_team
 from ui.css import CUSTOM_CSS
@@ -90,11 +91,12 @@ async def body() -> None:
         with st.chat_message("assistant"):
             # Create container for tool calls
             tool_calls_container = st.empty()
+            # Container for agent workflow steps
+            agent_steps_container = st.empty()
             # Layout: main area for final response, side area for per-agent steps
-            main_col, side_col = st.columns([3, 2], vertical_alignment="top")
-            resp_container = main_col.empty()
-            agent_steps_container = side_col.empty()
+            resp_container = st.empty()
             with st.spinner(":thinking_face: Researching..."):
+                md = MarkdownIt()
                 # Track final response separately from agent step outputs
                 final_response = ""
                 # Buffer for SIMPLE flows (no activation markers seen)
@@ -122,6 +124,18 @@ async def body() -> None:
                 marker_order = list(activation_markers.keys())
                 current_section_idx = None
                 markers_seen = False
+
+                def render_agent_steps():
+                    with agent_steps_container.container():
+                        st.markdown("<h4>🤖 Agent Workflow</h4>", unsafe_allow_html=True)
+                        for sec in st.session_state[team_name].get("agent_sections", []):
+                            if not sec.get("title") or not sec.get("content"):
+                                continue
+
+                            with st.expander(f'**{sec["title"]}**'):
+                                content_html = md.render(str(sec.get("content", "")))
+                                st.markdown(content_html, unsafe_allow_html=True)
+
                 try:
                     # Run the team and stream the response
                     run_response = await team.arun(user_message, stream=True)
@@ -186,13 +200,7 @@ async def body() -> None:
                                     to_append += ("\n" if to_append else "") + reasoning_extra
                                 st.session_state[team_name]["agent_sections"][target_idx]["content"] += to_append
                             # Re-render agent steps with latest streamed content
-                            with agent_steps_container.container():
-                                st.markdown("#### Agent steps")
-                                for sec in st.session_state[team_name]["agent_sections"]:
-                                    if not sec["title"] or not sec.get("content"):
-                                        continue
-                                    with st.expander(sec["title"], expanded=False):
-                                        st.markdown(sec.get("content", ""))
+                            render_agent_steps()
                         except Exception:
                             pass
                         # Display response
@@ -226,15 +234,8 @@ async def body() -> None:
                                             current_title = st.session_state[team_name]["agent_sections"][current_section_idx]["title"]
                                             if current_title == "Editor Agent":
                                                 final_response += remaining
-                                                resp_container.markdown(final_response)
                                             # Re-render agent steps
-                                            with agent_steps_container.container():
-                                                st.markdown("#### Agent steps")
-                                                for sec in st.session_state[team_name]["agent_sections"]:
-                                                    if not sec["title"] or not sec.get("content"):
-                                                        continue
-                                                    with st.expander(sec["title"], expanded=False):
-                                                        st.markdown(sec["content"]) 
+                                            render_agent_steps()
                                     break
 
                                 else:
@@ -252,7 +253,6 @@ async def body() -> None:
                                             current_title = st.session_state[team_name]["agent_sections"][current_section_idx]["title"]
                                             if current_title == "Editor Agent":
                                                 final_response += before
-                                                resp_container.markdown(final_response)
                                     # Move cursor past the marker text and switch current section
                                     processed_pos = next_marker_pos + len(next_marker_key)
                                     section_title = activation_markers[next_marker_key]
@@ -269,15 +269,8 @@ async def body() -> None:
                                         current_section_idx = existing_idx
                                     markers_seen = True
                                     # Render updated agent steps with the new section header
-                                    with agent_steps_container.container():
-                                        st.markdown("#### Agent steps")
-                                        for sec in st.session_state[team_name]["agent_sections"]:
-                                            if not sec["title"] or not sec.get("content"):
-                                                continue
-                                            with st.expander(sec["title"], expanded=False):
-                                                st.markdown(sec.get("content", "")) 
+                                    render_agent_steps()
 
-                                
                     # Post-run enrichment: recursively backfill agent sections from member_responses
                     try:
                         if hasattr(team, "run_response") and team.run_response is not None:
@@ -367,13 +360,7 @@ async def body() -> None:
                                             break
 
                             # Re-render with backfilled content
-                            with agent_steps_container.container():
-                                st.markdown("#### Agent steps")
-                                for sec in st.session_state[team_name]["agent_sections"]:
-                                    if not sec["title"] or not sec.get("content"):
-                                        continue
-                                    with st.expander(sec["title"], expanded=False):
-                                        st.markdown(sec.get("content", ""))
+                            render_agent_steps()
                     except Exception:
                         pass
 
@@ -381,7 +368,13 @@ async def body() -> None:
                     # SIMPLE fallback: if no markers were ever seen, render buffered content now
                     if not markers_seen and not final_response and buffered_simple:
                         final_response = buffered_simple
-                        resp_container.markdown(final_response)
+                    
+                    # Get final response from team object
+                    if team.run_response and hasattr(team.run_response, 'content') and team.run_response.content:
+                        final_response = team.run_response.content
+                    
+                    resp_container.markdown(final_response)
+
                     if team.run_response is not None and hasattr(team.run_response, 'tools'):
                         await add_message(team_name, "assistant", final_response, team.run_response.tools)
                     else:
