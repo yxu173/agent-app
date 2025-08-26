@@ -53,7 +53,7 @@ async def initialize_workflow_session_state(workflow_name: str):
 async def selected_model() -> str:
     """Display a model selector in the sidebar."""
     model_options = {
-        "gpt-4o-mini": "gpt-4o-mini",
+        "openai/o4-mini": "openai/o4-mini",
         "o3-mini": "o3-mini",
         "openai/gpt-5-mini": "openai/gpt-5-mini",
         "openai/gpt-5-nano": "openai/gpt-5-nano",

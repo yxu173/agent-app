@@ -252,7 +252,7 @@ class ExcelProcessor(Workflow):
 
     # Excel Analysis Agent: Analyzes keywords for SEO value
     keyword_analyzer: Agent = Agent(
-        model=OpenAIChat(id="gpt-4o-mini", base_url="https://openrouter.ai/api/v1", api_key=os.getenv("OPENROUTER_API_KEY")),
+        model=OpenAIChat(id="openai/o4-mini", base_url="https://openrouter.ai/api/v1", api_key=os.getenv("OPENROUTER_API_KEY")),
         debug_mode=True,
         stream=True,
         instructions=dedent("""\
