@@ -4,7 +4,7 @@ from agno.aws.app.fastapi import FastApi
 from agno.aws.app.streamlit import Streamlit
 from agno.aws.resource.ec2 import InboundRule, SecurityGroup
 from agno.aws.resource.ecs import EcsCluster
-from agno.aws.resource.reference import AwsReference
+# AwsReference removed - no longer needed without load balancer
 from agno.aws.resource.s3 import S3Bucket
 from agno.aws.resource.secret import SecretsManager
 from agno.aws.resources import AwsResources
@@ -15,6 +15,17 @@ from workspace.settings import ws_settings
 
 #
 # -*- Resources for the Production Environment
+# Optimized for 5-person team with minimal cloud costs
+# - CPU: 256 (0.25 vCPU) - minimum for AWS Fargate
+# - Memory: 512 MB - minimum for AWS Fargate  
+# - Auto-scaling: 1-2 instances based on CPU utilization
+# - Single worker processes to minimize resource usage
+# - Direct access to services (no load balancer for cost savings)
+#
+# Estimated monthly cost for 5 users (24/7):
+# - ECS Fargate: ~$15-25/month (0.25 vCPU + 0.5GB RAM)
+# - Data transfer: ~$5-10/month
+# - Total: ~$20-35/month (load balancer removed)
 #
 # Skip resource deletion when running `ag ws down` (set to True after initial deployment)
 skip_delete = False
@@ -24,12 +35,12 @@ save_output = True
 # -*- Production image
 prd_image = DockerImage(
     name=f"{ws_settings.image_repo}/{ws_settings.image_name}",
-    tag=ws_settings.prd_env,
-    enabled=ws_settings.build_images,
+    tag="latest",  # use already-pushed image tag
+    enabled=False,  # skip building; pull from ECR
     path=str(ws_settings.ws_root),
     platforms=["linux/amd64", "linux/arm64"],
     # Push images after building
-    push_image=ws_settings.push_images,
+    push_image=False,
 )
 
 # -*- S3 bucket for production data (set enabled=True when needed)
@@ -51,45 +62,24 @@ prd_secret = SecretsManager(
     save_output=save_output,
 )
 
-# -*- Security Group for the load balancer
-prd_lb_sg = SecurityGroup(
-    name=f"{ws_settings.prd_key}-lb-sg",
-    group="app",
-    description="Security group for the load balancer",
-    inbound_rules=[
-        InboundRule(
-            description="Allow HTTP traffic from the internet",
-            port=80,
-            cidr_ip="0.0.0.0/0",
-        ),
-        InboundRule(
-            description="Allow HTTPS traffic from the internet",
-            port=443,
-            cidr_ip="0.0.0.0/0",
-        ),
-    ],
-    subnets=ws_settings.aws_subnet_ids,
-    skip_delete=skip_delete,
-    save_output=save_output,
-)
-# -*- Security Group for the application
+# Load balancer removed to reduce costs - direct access to services
+# -*- Security Group for the application (direct access without load balancer)
 prd_sg = SecurityGroup(
     name=f"{ws_settings.prd_key}-sg",
     group="app",
-    description="Security group for the production application",
+    description="Security group for the production application - direct access",
     inbound_rules=[
         InboundRule(
-            description="Allow traffic from LB to the FastAPI server",
+            description="Allow HTTP traffic to FastAPI server",
             port=8000,
-            security_group_id=AwsReference(prd_lb_sg.get_security_group_id),
+            cidr_ip="0.0.0.0/0",
         ),
         InboundRule(
-            description="Allow traffic from LB to the Streamlit app",
+            description="Allow HTTP traffic to Streamlit app",
             port=8501,
-            security_group_id=AwsReference(prd_lb_sg.get_security_group_id),
+            cidr_ip="0.0.0.0/0",
         ),
     ],
-    depends_on=[prd_lb_sg],
     subnets=ws_settings.aws_subnet_ids,
     skip_delete=skip_delete,
     save_output=save_output,
@@ -121,24 +111,21 @@ container_env = {
 
 # -*- Streamlit running on ECS
 prd_streamlit = Streamlit(
-    name=f"{ws_settings.prd_key}-ui",
+    name=f"{ws_settings.prd_key}-ui-v3",
     group="app",
     image=prd_image,
     command="streamlit run ui/Home.py",
     port_number=8501,
-    # Minimal resources for 10 users, 2 hours daily
-    ecs_task_cpu="512",           # Reduced from 2048 to 512 (0.5 vCPU)
-    ecs_task_memory="1024",       # Reduced from 4096 to 1024 (1 GB RAM)
-    ecs_service_count=1,          # Start with 1, scale up if needed
+    # Minimal resources for 5 users - ultra-low cost configuration
+    ecs_task_cpu="256",  # 0.25 vCPU - minimum for Fargate
+    ecs_task_memory="512",  # 0.5 GB RAM - minimum for Fargate
+    ecs_service_count=1,  # Single instance for cost optimization
     ecs_cluster=prd_ecs_cluster,
     aws_secrets=[prd_secret],
     subnets=ws_settings.aws_subnet_ids,
     security_groups=[prd_sg],
-    # To enable HTTPS, create an ACM certificate and add the ARN below:
-    # load_balancer_enable_https=True,
-    # load_balancer_certificate_arn="LOAD_BALANCER_CERTIFICATE_ARN",
-    load_balancer_security_groups=[prd_lb_sg],
-    create_load_balancer=True,
+    # Load balancer removed to reduce costs - direct access to service
+    create_load_balancer=False,
     env_vars=container_env,
     skip_delete=skip_delete,
     save_output=save_output,
@@ -146,28 +133,29 @@ prd_streamlit = Streamlit(
     wait_for_create=False,
     # Do not wait for the service to be deleted
     wait_for_delete=False,
+    # Auto-scaling configuration for cost optimization
+    auto_scaling_min_capacity=1,  # Minimum 1 instance
+    auto_scaling_max_capacity=2,  # Maximum 2 instances for 5 users
+    auto_scaling_target_cpu_utilization=70,  # Scale up at 70% CPU
 )
 
 # -*- FastApi running on ECS
 prd_fastapi = FastApi(
-    name=f"{ws_settings.prd_key}-api",
+    name=f"{ws_settings.prd_key}-api-v3",
     group="api",
     image=prd_image,
-    command="uvicorn api.main:app --workers 1",  # Reduced workers from 2 to 1
+    command="uvicorn api.main:app --workers 1 --timeout-keep-alive 30",  # Single worker with optimized keep-alive
     port_number=8000,
-    # Minimal resources for 10 users, 2 hours daily
-    ecs_task_cpu="256",           # Reduced from 1024 to 256 (0.25 vCPU)
-    ecs_task_memory="512",        # Reduced from 2048 to 512 (0.5 GB RAM)
-    ecs_service_count=1,          # Start with 1, scale up if needed
+    # Minimal resources for 5 users - ultra-low cost configuration
+    ecs_task_cpu="256",  # 0.25 vCPU - minimum for Fargate
+    ecs_task_memory="512",  # 0.5 GB RAM - minimum for Fargate
+    ecs_service_count=1,  # Single instance for cost optimization
     ecs_cluster=prd_ecs_cluster,
     aws_secrets=[prd_secret],
     subnets=ws_settings.aws_subnet_ids,
     security_groups=[prd_sg],
-    # To enable HTTPS, create an ACM certificate and add the ARN below:
-    # load_balancer_enable_https=True,
-    # load_balancer_certificate_arn="LOAD_BALANCER_CERTIFICATE_ARN",
-    load_balancer_security_groups=[prd_lb_sg],
-    create_load_balancer=True,
+    # Load balancer removed to reduce costs - direct access to service
+    create_load_balancer=False,
     health_check_path="/v1/health",
     env_vars=container_env,
     skip_delete=skip_delete,
@@ -176,6 +164,10 @@ prd_fastapi = FastApi(
     wait_for_create=False,
     # Do not wait for the service to be deleted
     wait_for_delete=False,
+    # Auto-scaling configuration for cost optimization
+    auto_scaling_min_capacity=1,  # Minimum 1 instance
+    auto_scaling_max_capacity=2,  # Maximum 2 instances for 5 users
+    auto_scaling_target_cpu_utilization=70,  # Scale up at 70% CPU
 )
 
 # -*- Production DockerResources
@@ -190,7 +182,6 @@ prd_aws_config = AwsResources(
     env=ws_settings.prd_env,
     apps=[prd_streamlit, prd_fastapi],
     resources=(
-        prd_lb_sg,
         prd_sg,
         prd_secret,
         prd_ecs_cluster,
