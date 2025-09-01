@@ -256,6 +256,10 @@ class ExcelProcessor(Workflow):
         super().__init__(**kwargs)
         # Initialize database tables
         self._init_database()
+        # Initialize session manager
+        self.session_manager = ExcelSessionManager()
+        # Initialize current session ID
+        self.current_session_id = None
 
     def _init_database(self):
         """Initialize database tables if they don't exist."""
@@ -434,7 +438,8 @@ The instructions are finished, so after analyzing and understanding them well an
         self,
         status: str,
         results_file_path: Optional[str] = None,
-        total_keywords: Optional[int] = None
+        total_keywords: Optional[int] = None,
+        enhanced_data: Optional[Dict[str, Any]] = None
     ) -> bool:
         """
         Update session status and related data.
@@ -443,6 +448,7 @@ The instructions are finished, so after analyzing and understanding them well an
             status: New status (pending, processing, completed, failed)
             results_file_path: Optional path to results file
             total_keywords: Optional total number of keywords processed
+            enhanced_data: Optional enhanced session data for insights
             
         Returns:
             bool: True if update was successful
@@ -457,224 +463,284 @@ The instructions are finished, so after analyzing and understanding them well an
                 session_id=self.session_id,
                 status=status,
                 results_file_path=results_file_path,
-                total_keywords=total_keywords
+                total_keywords=total_keywords,
+                enhanced_data=enhanced_data
             )
             
         except Exception as e:
             logger.error(f"Error updating session status: {e}")
             return False
 
-    def run(
-        self,
-        file_path: str,
-        niche: str,
-        chunk_size: str = "100",
-        session_id: Optional[str] = None,
-        session_name: Optional[str] = None,
-        original_filename: Optional[str] = None,
-        user_id: Optional[str] = None,
-        model_id: Optional[str] = None,
-    ) -> Iterator[RunResponse]:
-        logger.info(f"Processing Excel file with session_id: {session_id}")
-
-        if self.run_id is None:
-            raise ValueError("Run ID is not set")
-
-        # Handle session creation/loading
-        actual_session_id = None
-        if session_name:
-            # Try to load existing session by name
-            session_data = self.get_session_by_name(session_name)
-            if session_data:
-                actual_session_id = session_data['session_id']
-                logger.info(f"Loaded existing session: {actual_session_id} with name: {session_name}")
-            else:
-                # Create new session with the provided name
-                if not original_filename:
-                    original_filename = os.path.basename(file_path)
-                actual_session_id = self.create_session(
-                    session_name=session_name,
-                    file_path=file_path,
-                    original_filename=original_filename,
-                    niche=niche,
-                    chunk_size=int(chunk_size),
-                    user_id=user_id,
-                    model_id=model_id
-                )
-                logger.info(f"Created new session: {actual_session_id} with name: {session_name}")
-        else:
-            # Use provided session_id or create a default session
-            actual_session_id = session_id or self.session_id or 'default'
-            if actual_session_id == 'default':
-                # Create a default session
-                if not original_filename:
-                    original_filename = os.path.basename(file_path)
-                session_manager = ExcelSessionManager()
-                default_name = session_manager.generate_session_name(original_filename, niche)
-                actual_session_id = self.create_session(
-                    session_name=default_name,
-                    file_path=file_path,
-                    original_filename=original_filename,
-                    niche=niche,
-                    chunk_size=int(chunk_size),
-                    user_id=user_id,
-                    model_id=model_id
-                )
-                logger.info(f"Created default session: {actual_session_id} with name: {default_name}")
+    def run(self, file_path: str, niche: str, chunk_size: str, session_name: str, original_filename: str, user_id: str = "default_user", model_id: str = "openai/o4-mini") -> Iterator[RunResponse]:
+        """
+        Run the Excel keyword analysis workflow.
         
-        logger.info(f"Using session ID: {actual_session_id}")
-
-        # Convert chunk_size string to int
+        Args:
+            file_path: Path to the Excel file
+            niche: Niche/topic for keyword analysis
+            chunk_size: Chunk size for processing
+            session_name: User-friendly name for the session
+            original_filename: Original name of the uploaded file
+            user_id: User ID for session management
+            model_id: Model ID for AI processing
+            
+        Returns:
+            Iterator[RunResponse]: Streaming response with workflow progress
+        """
         try:
-            chunk_size_int = int(chunk_size)
-            if chunk_size_int <= 0:
+            # Set the model for this workflow run
+            self.set_model(model_id)
+            
+            # Create a new session
+            session_id = self.session_manager.create_session(
+                session_name=session_name,
+                file_path=file_path,
+                original_filename=original_filename,
+                niche=niche,
+                chunk_size=int(chunk_size),
+                user_id=user_id,
+                model_id=model_id
+            )
+            
+            # Store the session ID for later use
+            self.current_session_id = session_id
+            
+            # Store initial user message
+            user_message = f"Processing Excel file: {original_filename} for niche: {niche}"
+            self.session_manager.store_workflow_response(session_id, user_message, "user")
+            
+            # Initial progress message
+            initial_message = (
+                f"## 🚀 **Starting Excel Keyword Analysis**\n\n"
+                f"**📁 File Details:**\n"
+                f"• **File Name**: {original_filename}\n"
+                f"• **Niche/Topic**: {niche}\n"
+                f"• **Processing Strategy**: {chunk_size} rows per chunk\n\n"
+                f"**⚙️ Processing Features:**\n"
+                f"• **Chunk-based Processing**: Analyzing {chunk_size} rows at a time for optimal performance\n"
+                f"• **AI-Powered Analysis**: Using advanced SEO and content creation criteria\n"
+                f"• **Quality Filtering**: Identifying only the most valuable keywords\n"
+                f"• **Real-time Progress**: Live updates throughout the analysis\n\n"
+                f"---"
+            )
+            
+            # Store initial assistant message
+            self.session_manager.store_workflow_response(session_id, initial_message, "assistant")
+            
+            # Yield initial message
+            yield RunResponse(content=initial_message)
+
+            # Process Excel file in chunks
+            logger.info(f"Processing Excel file with session_id: {session_id}")
+
+            if self.run_id is None:
+                raise ValueError("Run ID is not set")
+
+            # Convert chunk_size string to int
+            try:
+                chunk_size_int = int(chunk_size)
+                if chunk_size_int <= 0:
+                    chunk_size_int = 100
+                    logger.warning(f"Invalid chunk_size '{chunk_size}', using default value of 100")
+            except ValueError:
                 chunk_size_int = 100
                 logger.warning(f"Invalid chunk_size '{chunk_size}', using default value of 100")
-        except ValueError:
-            chunk_size_int = 100
-            logger.warning(f"Invalid chunk_size '{chunk_size}', using default value of 100")
 
-        # Update agent instructions with the dynamic niche
-        self.keyword_analyzer.instructions = self.get_agent_instructions(niche)
+            # Update agent instructions with the dynamic niche
+            self.keyword_analyzer.instructions = self.get_agent_instructions(niche)
 
-        # Update session status to processing
-        self.update_session_status("processing")
+            # Update session status to processing
+            self.update_session_status("processing")
 
-        # Process the Excel file directly
-        excel_file_path = self.process_excel_file(file_path, actual_session_id)
-        if not excel_file_path:
-            self.update_session_status("failed")
-            yield RunResponse(
-                run_id=self.run_id,
-                content="Error: Failed to process Excel file",
-            )
-            return
-
-        # Get file info for progress tracking
-        file_info = get_excel_file_info(excel_file_path)
-        total_rows = file_info.get('total_rows', 0)
-        column_names = file_info.get('column_names', [])
-
-        # Initial progress message
-        yield RunResponse(
-            run_id=self.run_id,
-            content=f"📊 **Excel File Analysis Started**\n\n"
-                    f"📁 File: {excel_file_path}\n"
-                    f"🎯 Niche: {niche}\n"
-                    f"📈 Total Rows: {total_rows}\n"
-                    f"📋 Columns: {', '.join(column_names[:5])}{'...' if len(column_names) > 5 else ''}\n"
-                    f"🔄 Processing in chunks of {chunk_size_int} rows...\n"
-                    f"⏳ Estimated chunks: {(total_rows + chunk_size_int - 1) // chunk_size_int}\n\n"
-                    f"---"
-        )
-
-        # Process Excel file in chunks
-        total_keywords = 0
-        chunk_number = 0
-
-        while has_more_chunks(excel_file_path):
-            chunk_number += 1
-            current_pos = get_current_excel_position()
-
-            # Read chunk
-            chunk_df, start_row, end_row = read_excel_chunk_with_calamine(excel_file_path, chunk_size=chunk_size_int)
-
-            if chunk_df.empty:
-                break
-
-            # Calculate progress
-            progress_percentage = (current_pos / total_rows * 100) if total_rows > 0 else 0
-            remaining_chunks = (total_rows - current_pos + chunk_size_int - 1) // chunk_size_int
-
-            # Prepare keywords for analysis
-            keywords_text = self.prepare_keywords_for_analysis(chunk_df, start_row, end_row)
-            if not keywords_text:
-                # Skip empty chunks
+            # Process the Excel file directly
+            excel_file_path = self.process_excel_file(file_path, session_id)
+            if not excel_file_path:
+                self.update_session_status("failed")
                 yield RunResponse(
                     run_id=self.run_id,
-                    content=f"⏭️ **Chunk {chunk_number} Skipped**\n\n"
-                            f"📊 Position: {current_pos}/{total_rows} rows ({progress_percentage:.1f}%)\n"
-                            f"📝 No valid keywords found in rows {start_row + 1}-{end_row}\n"
-                            f"🔄 Remaining chunks: {remaining_chunks}\n\n"
-                            f"---"
+                    content="Error: Failed to process Excel file",
                 )
-                continue
+                return
 
-            # Extract keywords for display
-            keywords_for_display = self.extract_keywords_for_display(chunk_df, start_row, end_row)
+            # Get file info for progress tracking
+            file_info = get_excel_file_info(excel_file_path)
+            total_rows = file_info.get('total_rows', 0)
+            column_names = file_info.get('column_names', [])
 
-            # Show chunk processing start
+            # Initial progress message with enhanced structure
+            initial_progress_message = (
+                f"## 🚀 **Excel Keyword Analysis Started**\n\n"
+                f"### 📁 **File Information**\n\n"
+                f"| Property | Value |\n"
+                f"|----------|-------|\n"
+                f"| **File Path** | `{os.path.basename(excel_file_path)}` |\n"
+                f"| **Niche/Topic** | {niche} |\n"
+                f"| **Total Rows** | {total_rows} |\n"
+                f"| **Columns** | {', '.join(column_names[:5])}{'...' if len(column_names) > 5 else ''} |\n"
+                f"| **Chunk Size** | {chunk_size_int} rows |\n"
+                f"| **Estimated Chunks** | {(total_rows + chunk_size_int - 1) // chunk_size_int} |\n\n"
+                f"### 🔄 **Processing Strategy**\n\n"
+                f"• **Chunk-based Processing**: Analyzing {chunk_size_int} rows at a time for optimal performance\n"
+                f"• **AI-Powered Analysis**: Using advanced SEO and content creation criteria\n"
+                f"• **Quality Filtering**: Identifying only the most valuable keywords\n"
+                f"• **Real-time Progress**: Live updates throughout the analysis\n\n"
+                f"---"
+            )
+            
+            # Store initial progress message
+            self.session_manager.store_workflow_response(session_id, initial_progress_message, "assistant")
+            
             yield RunResponse(
                 run_id=self.run_id,
-                content=f"🔍 **Processing Chunk {chunk_number}**\n\n"
-                        f"📊 Position: {current_pos}/{total_rows} rows ({progress_percentage:.1f}%)\n"
-                        f"📝 Analyzing {len(keywords_for_display)} keywords from rows {start_row + 1}-{end_row}\n"
-                        f"🔄 Remaining chunks: {remaining_chunks}\n\n"
-                        f"**Keywords in this chunk:**\n"
-                        f"{keywords_for_display}\n\n"
-                        f"🤖 AI is analyzing keywords for SEO value in the {niche} niche..."
+                content=initial_progress_message
             )
 
-            # Analyze keywords (handle streaming/generator and non-streaming responses)
-            analysis_result = self.keyword_analyzer.run(keywords_text)
+           
+            total_keywords = 0
+            chunk_number = 0
 
-            last_response = None
-            try:
-                # If analysis_result is an iterator/generator, iterate to get the last response
-                for resp in analysis_result:  # type: ignore[assignment]
-                    last_response = resp
-            except TypeError:
-                # Not iterable; it's likely a single RunResponse
-                last_response = analysis_result
+            while has_more_chunks(excel_file_path):
+                chunk_number += 1
+                current_pos = get_current_excel_position()
 
-            if (
-                last_response is not None
-                and getattr(last_response, "content", None) is not None
-                and isinstance(last_response.content, ExcelChunkAnalysis)
-            ):
-                # Save results
-                keywords_data = []
-                valuable_keywords = []
-                for keyword_eval in last_response.content.valuable_keywords:
-                    keywords_data.append({
-                        'keyword': keyword_eval.keyword,
-                        'reason': keyword_eval.reason
-                    })
-                    valuable_keywords.append(keyword_eval.keyword)
+                # Read chunk
+                chunk_df, start_row, end_row = read_excel_chunk_with_calamine(excel_file_path, chunk_size=chunk_size_int)
 
-                total_keywords += len(keywords_data)
-                self.save_keywords_to_session(actual_session_id, keywords_data)
+                if chunk_df.empty:
+                    break
 
-                # Show chunk results
+                # Calculate progress
+                progress_percentage = (current_pos / total_rows * 100) if total_rows > 0 else 0
+                remaining_chunks = (total_rows - current_pos + chunk_size_int - 1) // chunk_size_int
+
+                # Prepare keywords for analysis
+                keywords_text = self.prepare_keywords_for_analysis(chunk_df, start_row, end_row)
+                if not keywords_text:
+                    # Skip empty chunks
+                    yield RunResponse(
+                        run_id=self.run_id,
+                        content=f"⏭️ **Chunk {chunk_number} Skipped**\n\n"
+                                f"📊 Position: {current_pos}/{total_rows} rows ({progress_percentage:.1f}%)\n"
+                                f"📝 No valid keywords found in rows {start_row + 1}-{end_row}\n"
+                                f"🔄 Remaining chunks: {remaining_chunks}\n\n"
+                                f"---"
+                    )
+                    continue
+
+                
+                keywords_for_display = self.extract_keywords_for_display(chunk_df, start_row, end_row)
+
+                
+                chunk_start_message = (
+                    f"## 🔍 **Processing Chunk {chunk_number}**\n\n"
+                    f"### 📊 **Progress Overview**\n\n"
+                    f"| Metric | Value |\n"
+                    f"|--------|-------|\n"
+                    f"| **Current Position** | {current_pos}/{total_rows} rows |\n"
+                    f"| **Progress** | {progress_percentage:.1f}% |\n"
+                    f"| **Keywords in Chunk** | {len(keywords_for_display)} |\n"
+                    f"| **Rows Range** | {start_row + 1}-{end_row} |\n"
+                    f"| **Remaining Chunks** | {remaining_chunks} |\n\n"
+                    f"### 📝 **Keywords Being Analyzed**\n\n"
+                    f"{keywords_for_display}\n\n"
+                    f"### 🤖 **AI Analysis Status**\n\n"
+                    f"🔄 **Analyzing keywords for SEO value in the {niche} niche...**\n\n"
+                    f"*This may take a few moments as the AI evaluates each keyword based on SEO best practices and content creation potential.*"
+                )
+                
+                self.session_manager.store_workflow_response(session_id, chunk_start_message, "assistant")
+                
                 yield RunResponse(
                     run_id=self.run_id,
-                    content=f"✅ **Chunk {chunk_number} Complete**\n\n"
-                            f"📊 Position: {current_pos}/{total_rows} rows ({progress_percentage:.1f}%)\n"
-                            f"🎯 Valuable keywords found: {len(keywords_data)}\n"
-                            f"📈 Total accumulated: {total_keywords} keywords\n"
-                            f"🔄 Remaining chunks: {remaining_chunks}\n\n"
-                            f"**Valuable keywords from this chunk:**\n"
-                            f"{', '.join(valuable_keywords[:10])}{'...' if len(valuable_keywords) > 10 else ''}\n\n"
-                            f"**Sample reasons:**\n"
-                            f"{self.format_sample_reasons(keywords_data[:3])}\n\n"
-                            f"---"
+                    content=chunk_start_message
                 )
 
-        final_results = self.finalize_session(actual_session_id)
-        
-        # Update session status to completed with results
-        session_excel_file = f"tmp/session_keywords_{actual_session_id}.xlsx"
-        if os.path.exists(session_excel_file):
-            self.update_session_status(
-                "completed",
-                results_file_path=session_excel_file,
-                total_keywords=total_keywords
-            )
-        else:
-            self.update_session_status("completed", total_keywords=total_keywords)
-        
-        yield RunResponse(run_id=self.run_id, content=final_results)
+                analysis_result = self.keyword_analyzer.run(keywords_text)
 
+                last_response = None
+                try:
+                    for resp in analysis_result: 
+                        last_response = resp
+                except TypeError:
+                    last_response = analysis_result
+
+                if (
+                    last_response is not None
+                    and getattr(last_response, "content", None) is not None
+                    and isinstance(last_response.content, ExcelChunkAnalysis)
+                ):
+                    # Save results
+                    keywords_data = []
+                    valuable_keywords = []
+                    for keyword_eval in last_response.content.valuable_keywords:
+                        keywords_data.append({
+                            'keyword': keyword_eval.keyword,
+                            'reason': keyword_eval.reason
+                        })
+                        valuable_keywords.append(keyword_eval.keyword)
+
+                    total_keywords += len(keywords_data)
+                    self.save_keywords_to_session(session_id, keywords_data)
+
+                    # Show chunk results with enhanced structure
+                    chunk_complete_message = (
+                        f"## ✅ **Chunk {chunk_number} Complete**\n\n"
+                        f"### 📊 **Chunk Summary**\n\n"
+                        f"| Metric | Value |\n"
+                        f"|--------|-------|\n"
+                        f"| **Position** | {current_pos}/{total_rows} rows |\n"
+                        f"| **Progress** | {progress_percentage:.1f}% |\n"
+                        f"| **Valuable Keywords Found** | {len(keywords_data)} |\n"
+                        f"| **Total Accumulated** | {total_keywords} |\n"
+                        f"| **Remaining Chunks** | {remaining_chunks} |\n\n"
+                        f"### 🎯 **Top Valuable Keywords from This Chunk**\n\n"
+                        f"{', '.join(valuable_keywords[:10])}{'...' if len(valuable_keywords) > 10 else ''}\n\n"
+                        f"### 💡 **Sample Analysis Reasons**\n\n"
+                        f"{self.format_sample_reasons(keywords_data[:3])}\n\n"
+                        f"### 📈 **Progress Update**\n\n"
+                        f"🔄 **{total_keywords} valuable keywords identified so far**\n\n"
+                        f"---"
+                    )
+                    
+                    # Store chunk completion message
+                    self.session_manager.store_workflow_response(session_id, chunk_complete_message, "assistant")
+                    
+                    yield RunResponse(
+                        run_id=self.run_id,
+                        content=chunk_complete_message
+                    )
+
+            final_results = self.finalize_session(session_id)
+            
+            # Store final results message
+            self.session_manager.store_workflow_response(session_id, final_results, "assistant")
+            
+            # Update session status to completed with results
+            session_excel_file = f"tmp/session_keywords_{session_id}.xlsx"
+            if os.path.exists(session_excel_file):
+                # Get enhanced data for the session
+                enhanced_data = self.get_enhanced_session_data(session_id)
+                self.update_session_status(
+                    "completed",
+                    results_file_path=session_excel_file,
+                    total_keywords=total_keywords,
+                    enhanced_data=enhanced_data
+                )
+            else:
+                self.update_session_status("completed", total_keywords=total_keywords)
+            
+            yield RunResponse(run_id=self.run_id, content=final_results)
+
+        except Exception as e:
+            logger.error(f"Error in Excel workflow run: {e}", exc_info=True)
+            # Update session status to failed
+            if hasattr(self, 'current_session_id') and self.current_session_id:
+                self.update_session_status("failed")
+            
+            yield RunResponse(
+                run_id=self.run_id if hasattr(self, 'run_id') else None,
+                content=f"## ❌ **An Error Occurred**\n\nAn unexpected error occurred during processing: `{str(e)}`\n\nPlease try again or check the application logs for more details."
+            )
 
 
     def list_sessions(self, user_id: Optional[str] = None, limit: int = 50) -> List[Dict[str, Any]]:
@@ -847,7 +913,7 @@ The instructions are finished, so after analyzing and understanding them well an
             logger.error(f"Error saving keywords to session: {e}")
 
     def finalize_session(self, session_id: Optional[str]) -> str:
-        """Finalize the session and return summary."""
+        """Finalize the session and return an enhanced, structured summary."""
         try:
             session_id = session_id or 'default'
             session_excel_file = f"tmp/session_keywords_{session_id}.xlsx"
@@ -857,23 +923,69 @@ The instructions are finished, so after analyzing and understanding them well an
                 try:
                     df = pd.read_excel(session_excel_file)
                     session_keywords = df.to_dict('records')
-                except:
+                except Exception as e:
+                    logger.warning(f"Could not read session Excel file '{session_excel_file}': {e}")
                     session_keywords = []
 
             if session_keywords:
-                result = f"🎉 **Session Complete!**\n\n"
-                result += f"📊 **Summary:**\n"
-                result += f"• Total valuable keywords processed: {len(session_keywords)}\n"
-                result += f"• File saved: {session_excel_file}\n"
-                result += f"• File size: {self.get_file_size(session_excel_file)} MB\n\n"
-                #result += f"📥 **Download your results:**\n"
-                #result += f"🔗 {download_url}\n\n"
-                result += f"💡 **What's in the file:**\n"
-                result += f"• Keyword: The valuable keyword\n"
-                result += f"• Reason: Why this keyword was selected as valuable\n\n"
-                result += f"✅ Your Excel file is ready for download!"
+                # Enhanced structured result
+                result = f"🎉 **Excel Keyword Analysis Complete!**\n\n"
+                
+                # Summary section
+                result += f"## 📊 **Analysis Summary**\n\n"
+                result += f"| Metric | Value |\n"
+                result += f"|--------|-------|\n"
+                result += f"| **Total Keywords Analyzed** | {len(session_keywords)} |\n"
+                result += f"| **File Size** | {self.get_file_size(session_excel_file)} MB |\n"
+                result += f"| **Processing Status** | ✅ Complete |\n"
+                result += f"| **Results File** | `{os.path.basename(session_excel_file)}` |\n\n"
+                
+                # Top keywords section as a table for better formatting
+                result += f"## 🎯 **Top 10 Valuable Keywords & Analysis**\n\n"
+                result += f"| # | Keyword | Reason for Selection |\n"
+                result += f"|---|---------|----------------------|\n"
+                top_keywords = session_keywords[:10]
+                for i, item in enumerate(top_keywords, 1):
+                    keyword = item['keyword']
+                    reason = str(item.get('reason', '')).replace('\n', ' ').replace('|', ' ') # Sanitize for table
+                    reason = reason[:100] + "..." if len(reason) > 100 else reason
+                    result += f"| **{i}** | `{keyword}` | *{reason}* |\n"
+
+                if len(session_keywords) > 10:
+                    result += f"\n*... and {len(session_keywords) - 10} more valuable keywords are available in the downloadable Excel file.*\n\n"
+                
+                # Keyword Insights section
+                keyword_categories = self.analyze_keyword_categories(session_keywords)
+                if keyword_categories:
+                    result += f"## 💡 **Keyword Insights**\n\n"
+                    result += f"Your keyword list has been analyzed and categorized based on user intent:\n\n"
+                    result += f"| Category | Count | Description |\n"
+                    result += f"|----------|-------|-------------|\n"
+                    if 'question_keywords' in keyword_categories:
+                        result += f"| **Question-Based** | {keyword_categories.get('question_keywords', 0)} | Keywords phrased as questions (who, what, why, etc.) |\n"
+                    if 'comparison_keywords' in keyword_categories:
+                        result += f"| **Comparison** | {keyword_categories.get('comparison_keywords', 0)} | Keywords comparing products or services (best, top, vs) |\n"
+                    if 'benefit_keywords' in keyword_categories:
+                        result += f"| **Benefit-Oriented** | {keyword_categories.get('benefit_keywords', 0)} | Keywords focused on advantages and benefits |\n"
+                    if 'how_to_keywords' in keyword_categories:
+                        result += f"| **How-To/Guides** | {keyword_categories.get('how_to_keywords', 0)} | Keywords that suggest instructional content |\n"
+                    if 'general_keywords' in keyword_categories:
+                        result += f"| **General Informational** | {keyword_categories.get('general_keywords', 0)} | Broad topics for general articles |\n"
+                    result += "\n*This can help you plan different types of content to meet user needs.*\n\n"
+
+                # Final success message
+                result += f"✅ **Your keyword analysis is ready!** Download the Excel file to access all valuable keywords.\n\n"
+                
+                # Save enhanced data to session
+                self.save_enhanced_session_data(session_id, session_keywords, session_excel_file)
+                
             else:
-                result = "Session complete! No valuable keywords found in this session."
+                result = "## ⚠️ **Analysis Complete**\n\n"
+                result += "No valuable keywords were found in this session. This could be due to:\n\n"
+                result += "• Keywords not meeting the AI's quality criteria\n"
+                result += "• The provided Excel file being empty or having an unsupported format\n"
+                result += "• Incorrect column names (the tool looks for a 'Keyword' column)\n\n"
+                result += "**Recommendation:** Please check your Excel file and try again, or adjust the AI instructions in the sidebar for different results."
 
             if session_id:
                 self.add_results_to_cache(session_id, result)
@@ -881,8 +993,88 @@ The instructions are finished, so after analyzing and understanding them well an
             return result
 
         except Exception as e:
-            logger.error(f"Error finalizing session: {e}")
-            return f"Error finalizing session: {str(e)}"
+            logger.error(f"Error finalizing session: {e}", exc_info=True)
+            return f"## ❌ **An Error Occurred**\n\nAn unexpected error occurred while finalizing the session: `{str(e)}`\n\nPlease try again or check the application logs for more details."
+
+    def save_enhanced_session_data(self, session_id: str, keywords_data: List[Dict[str, str]], excel_file_path: str):
+        """Save enhanced session data for better user experience."""
+        try:
+            # Create enhanced session data
+            enhanced_data = {
+                'session_id': session_id,
+                'total_keywords': len(keywords_data),
+                'file_path': excel_file_path,
+                'file_name': os.path.basename(excel_file_path),
+                'file_size_mb': self.get_file_size(excel_file_path),
+                'top_keywords': keywords_data[:10],  # Top 10 keywords
+                'keyword_categories': self.analyze_keyword_categories(keywords_data),
+                'processing_summary': {
+                    'status': 'completed',
+                    'total_processed': len(keywords_data),
+                    'completion_time': pd.Timestamp.now().isoformat()
+                }
+            }
+            
+            # Save to session cache
+            self.session_state.setdefault("enhanced_session_data", {})
+            self.session_state["enhanced_session_data"][session_id] = enhanced_data
+            
+            logger.info(f"Enhanced session data saved for session: {session_id}")
+            
+        except Exception as e:
+            logger.error(f"Error saving enhanced session data: {e}")
+
+    def analyze_keyword_categories(self, keywords_data: List[Dict[str, str]]) -> Dict[str, int]:
+        """Analyze keyword categories for insights."""
+        try:
+            categories = {}
+            for item in keywords_data:
+                keyword = item['keyword'].lower()
+                
+                # Simple category detection based on keyword patterns
+                if any(word in keyword for word in ['how', 'what', 'why', 'when', 'where']):
+                    categories['question_keywords'] = categories.get('question_keywords', 0) + 1
+                elif any(word in keyword for word in ['best', 'top', 'review', 'compare']):
+                    categories['comparison_keywords'] = categories.get('comparison_keywords', 0) + 1
+                elif any(word in keyword for word in ['benefits', 'advantages', 'pros', 'effects']):
+                    categories['benefit_keywords'] = categories.get('benefit_keywords', 0) + 1
+                elif any(word in keyword for word in ['recipe', 'how to', 'tutorial', 'guide']):
+                    categories['how_to_keywords'] = categories.get('how_to_keywords', 0) + 1
+                else:
+                    categories['general_keywords'] = categories.get('general_keywords', 0) + 1
+            
+            return categories
+        except Exception as e:
+            logger.error(f"Error analyzing keyword categories: {e}")
+            return {}
+
+    def get_enhanced_session_data(self, session_id: str) -> Optional[Dict[str, Any]]:
+        """Get enhanced session data from cache."""
+        try:
+            return self.session_state.get("enhanced_session_data", {}).get(session_id)
+        except Exception as e:
+            logger.error(f"Error getting enhanced session data: {e}")
+            return None
+
+    def get_workflow_responses(self, session_id: str) -> List[Dict[str, Any]]:
+        """Get workflow responses for a session."""
+        try:
+            if hasattr(self, 'session_manager'):
+                return self.session_manager.get_workflow_responses(session_id)
+            return []
+        except Exception as e:
+            logger.error(f"Error getting workflow responses: {e}")
+            return []
+
+    def clear_workflow_responses(self, session_id: str) -> bool:
+        """Clear workflow responses for a session."""
+        try:
+            if hasattr(self, 'session_manager'):
+                return self.session_manager.clear_workflow_responses(session_id)
+            return False
+        except Exception as e:
+            logger.error(f"Error clearing workflow responses: {e}")
+            return False
 
     def get_download_url(self, session_id: str) -> str:
         """Generate download URL based on environment."""

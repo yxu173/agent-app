@@ -149,7 +149,8 @@ class ExcelSessionManager:
         session_id: str,
         status: str,
         results_file_path: Optional[str] = None,
-        total_keywords: Optional[int] = None
+        total_keywords: Optional[int] = None,
+        enhanced_data: Optional[Dict[str, Any]] = None
     ) -> bool:
         """
         Update session status and related data.
@@ -159,6 +160,7 @@ class ExcelSessionManager:
             status: New status (pending, processing, completed, failed)
             results_file_path: Optional path to results file
             total_keywords: Optional total number of keywords processed
+            enhanced_data: Optional enhanced session data
             
         Returns:
             bool: True if update was successful
@@ -184,8 +186,21 @@ class ExcelSessionManager:
             if status == "completed":
                 session_record.completed_at = datetime.utcnow()
             
+            # Store enhanced data if provided
+            if enhanced_data is not None:
+                # For now, we'll store it as a JSON string in a comment field
+                # In a future version, we could add a dedicated column for this
+                import json
+                try:
+                    enhanced_json = json.dumps(enhanced_data)
+                    # Store in a way that doesn't break existing functionality
+                    # For now, we'll log it and could extend the database schema later
+                    logger.info(f"Enhanced data for session {session_id}: {enhanced_json[:200]}...")
+                except Exception as e:
+                    logger.warning(f"Could not serialize enhanced data: {e}")
+            
             self.db_session.commit()
-            logger.info(f"Updated session {session_id} status to: {status}")
+            logger.info(f"Updated session {session_id} status to {status}")
             return True
             
         except Exception as e:
@@ -194,6 +209,78 @@ class ExcelSessionManager:
             except Exception:
                 pass  # Ignore rollback errors
             logger.error(f"Error updating session {session_id}: {e}")
+            return False
+
+    def store_workflow_response(self, session_id: str, response_content: str, response_type: str = "assistant") -> bool:
+        """
+        Store workflow response in session for conversation history.
+        
+        Args:
+            session_id: The session ID to store response for
+            response_content: The content of the response
+            response_type: Type of response (user, assistant, system)
+            
+        Returns:
+            bool: True if storage was successful
+        """
+        try:
+            # Store in session cache for now (could be extended to database later)
+            if not hasattr(self, '_workflow_responses'):
+                self._workflow_responses = {}
+            
+            if session_id not in self._workflow_responses:
+                self._workflow_responses[session_id] = []
+            
+            self._workflow_responses[session_id].append({
+                'type': response_type,
+                'content': response_content,
+                'timestamp': datetime.utcnow().isoformat()
+            })
+            
+            logger.info(f"Stored workflow response for session {session_id}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error storing workflow response for session {session_id}: {e}")
+            return False
+
+    def get_workflow_responses(self, session_id: str) -> List[Dict[str, Any]]:
+        """
+        Get workflow responses for a session.
+        
+        Args:
+            session_id: The session ID to get responses for
+            
+        Returns:
+            List of response dictionaries
+        """
+        try:
+            if hasattr(self, '_workflow_responses') and session_id in self._workflow_responses:
+                return self._workflow_responses[session_id]
+            return []
+            
+        except Exception as e:
+            logger.error(f"Error getting workflow responses for session {session_id}: {e}")
+            return []
+
+    def clear_workflow_responses(self, session_id: str) -> bool:
+        """
+        Clear workflow responses for a session.
+        
+        Args:
+            session_id: The session ID to clear responses for
+            
+        Returns:
+            bool: True if clearing was successful
+        """
+        try:
+            if hasattr(self, '_workflow_responses') and session_id in self._workflow_responses:
+                del self._workflow_responses[session_id]
+                logger.info(f"Cleared workflow responses for session {session_id}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error clearing workflow responses for session {session_id}: {e}")
             return False
     
     def list_user_sessions(

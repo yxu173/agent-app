@@ -91,6 +91,27 @@ async def excel_session_selector(workflow, model_id: str):
                     st.session_state["session_file_path"] = session_data['file_path']
                     st.session_state["session_original_filename"] = session_data['original_filename']
                     
+                    # Load workflow responses for this session
+                    if hasattr(workflow, 'get_workflow_responses'):
+                        workflow_responses = workflow.get_workflow_responses(session_data['session_id'])
+                        if workflow_responses:
+                            # Clear existing messages and load session messages
+                            if "messages" not in st.session_state[workflow_name]:
+                                st.session_state[workflow_name]["messages"] = []
+                            
+                            # Convert workflow responses to message format
+                            session_messages = []
+                            for response in workflow_responses:
+                                session_messages.append({
+                                    "role": response['type'],
+                                    "content": response['content'],
+                                    "timestamp": response['timestamp']
+                                })
+                            
+                            # Update the messages in session state
+                            st.session_state[workflow_name]["messages"] = session_messages
+                            logger.info(f"Loaded {len(session_messages)} workflow responses for session {session_name}")
+                    
                     # Show session details
                     st.sidebar.markdown(f"**📊 Session Details:**")
                     st.sidebar.markdown(f"• **File:** {session_data['original_filename']}")
@@ -172,6 +193,12 @@ async def sidebar(workflow: Workflow):
             del st.session_state["session_file_path"]
         if "session_original_filename" in st.session_state:
             del st.session_state["session_original_filename"]
+        
+        # Clear workflow responses for the previous session if any
+        if workflow_name in st.session_state and "session_id" in st.session_state[workflow_name]:
+            previous_session_id = st.session_state[workflow_name]["session_id"]
+            if previous_session_id and hasattr(workflow, 'clear_workflow_responses'):
+                workflow.clear_workflow_responses(previous_session_id)
         
         # Set a flag to reset session selector on next render
         st.session_state["reset_session_selector"] = True
