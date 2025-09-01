@@ -1,7 +1,7 @@
 import base64
 import pandas as pd
 import os
-from typing import List, Optional, Dict, Iterator
+from typing import List, Optional, Dict, Iterator, Any
 from textwrap import dedent
 from agno.agent import Agent
 from agno.models.openai import OpenAIChat
@@ -10,6 +10,7 @@ from agno.workflow import RunResponse, Workflow
 from pydantic import BaseModel, Field
 from agno.utils.log import logger
 from workflows.settings_manager import WorkflowSettingsManager
+from workflows.excel_session_manager import ExcelSessionManager
 
 current_row_position = 0
 
@@ -250,6 +251,21 @@ class ExcelProcessor(Workflow):
     identifying valuable keywords for content creation and SEO optimization.
     """)
 
+    def __init__(self, **kwargs):
+        """Initialize the ExcelProcessor and ensure database tables exist."""
+        super().__init__(**kwargs)
+        # Initialize database tables
+        self._init_database()
+
+    def _init_database(self):
+        """Initialize database tables if they don't exist."""
+        try:
+            from db.init_db import init_database
+            init_database()
+        except Exception as e:
+            logger.warning(f"Database initialization failed: {e}")
+            # Continue without failing the workflow initialization
+
     # Excel Analysis Agent: Analyzes keywords for SEO value
     keyword_analyzer: Agent = Agent(
         model=OpenAIChat(id="openai/o4-mini", base_url="https://openrouter.ai/api/v1", api_key=os.getenv("OPENROUTER_API_KEY")),
@@ -343,20 +359,169 @@ The instructions are finished, so after analyzing and understanding them well an
         except Exception as e:
             logger.warning(f"Failed to set model to '{model_id}': {e}")
 
+    def create_session(
+        self,
+        session_name: str,
+        file_path: str,
+        original_filename: str,
+        niche: str,
+        chunk_size: int,
+        user_id: Optional[str] = None,
+        model_id: Optional[str] = None
+    ) -> str:
+        """
+        Create a new Excel workflow session with database persistence.
+        
+        Args:
+            session_name: User-friendly name for the session
+            file_path: Path to the uploaded Excel file
+            original_filename: Original name of the uploaded file
+            niche: Niche/topic for keyword analysis
+            chunk_size: Chunk size for processing
+            user_id: Optional user ID
+            model_id: Optional model ID used for processing
+            
+        Returns:
+            str: Session ID (UUID)
+        """
+        try:
+            session_manager = ExcelSessionManager()
+            session_id = session_manager.create_session(
+                session_name=session_name,
+                file_path=file_path,
+                original_filename=original_filename,
+                niche=niche,
+                chunk_size=chunk_size,
+                user_id=user_id,
+                model_id=model_id
+            )
+            
+            # Set the session ID in the workflow
+            self.session_id = session_id
+            logger.info(f"Created Excel session: {session_id} with name: {session_name}")
+            return session_id
+            
+        except Exception as e:
+            logger.error(f"Error creating Excel session: {e}")
+            raise
+
+    def get_session_by_name(self, session_name: str) -> Optional[Dict[str, Any]]:
+        """
+        Get session data by session name.
+        
+        Args:
+            session_name: The session name to look up
+            
+        Returns:
+            Dict with session data or None if not found
+        """
+        try:
+            session_manager = ExcelSessionManager()
+            session_data = session_manager.get_session_by_name(session_name)
+            
+            if session_data:
+                # Set the session ID in the workflow
+                self.session_id = session_data['session_id']
+                logger.info(f"Loaded Excel session: {session_data['session_id']} with name: {session_name}")
+            
+            return session_data
+            
+        except Exception as e:
+            logger.error(f"Error getting session by name '{session_name}': {e}")
+            return None
+
+    def update_session_status(
+        self,
+        status: str,
+        results_file_path: Optional[str] = None,
+        total_keywords: Optional[int] = None
+    ) -> bool:
+        """
+        Update session status and related data.
+        
+        Args:
+            status: New status (pending, processing, completed, failed)
+            results_file_path: Optional path to results file
+            total_keywords: Optional total number of keywords processed
+            
+        Returns:
+            bool: True if update was successful
+        """
+        if not self.session_id:
+            logger.warning("No session ID available for status update")
+            return False
+        
+        try:
+            session_manager = ExcelSessionManager()
+            return session_manager.update_session_status(
+                session_id=self.session_id,
+                status=status,
+                results_file_path=results_file_path,
+                total_keywords=total_keywords
+            )
+            
+        except Exception as e:
+            logger.error(f"Error updating session status: {e}")
+            return False
+
     def run(
         self,
         file_path: str,
         niche: str,
         chunk_size: str = "100",
         session_id: Optional[str] = None,
+        session_name: Optional[str] = None,
+        original_filename: Optional[str] = None,
+        user_id: Optional[str] = None,
+        model_id: Optional[str] = None,
     ) -> Iterator[RunResponse]:
         logger.info(f"Processing Excel file with session_id: {session_id}")
 
         if self.run_id is None:
             raise ValueError("Run ID is not set")
 
-        # Get the actual session ID from the workflow
-        actual_session_id = session_id or self.session_id or 'default'
+        # Handle session creation/loading
+        actual_session_id = None
+        if session_name:
+            # Try to load existing session by name
+            session_data = self.get_session_by_name(session_name)
+            if session_data:
+                actual_session_id = session_data['session_id']
+                logger.info(f"Loaded existing session: {actual_session_id} with name: {session_name}")
+            else:
+                # Create new session with the provided name
+                if not original_filename:
+                    original_filename = os.path.basename(file_path)
+                actual_session_id = self.create_session(
+                    session_name=session_name,
+                    file_path=file_path,
+                    original_filename=original_filename,
+                    niche=niche,
+                    chunk_size=int(chunk_size),
+                    user_id=user_id,
+                    model_id=model_id
+                )
+                logger.info(f"Created new session: {actual_session_id} with name: {session_name}")
+        else:
+            # Use provided session_id or create a default session
+            actual_session_id = session_id or self.session_id or 'default'
+            if actual_session_id == 'default':
+                # Create a default session
+                if not original_filename:
+                    original_filename = os.path.basename(file_path)
+                session_manager = ExcelSessionManager()
+                default_name = session_manager.generate_session_name(original_filename, niche)
+                actual_session_id = self.create_session(
+                    session_name=default_name,
+                    file_path=file_path,
+                    original_filename=original_filename,
+                    niche=niche,
+                    chunk_size=int(chunk_size),
+                    user_id=user_id,
+                    model_id=model_id
+                )
+                logger.info(f"Created default session: {actual_session_id} with name: {default_name}")
+        
         logger.info(f"Using session ID: {actual_session_id}")
 
         # Convert chunk_size string to int
@@ -372,9 +537,13 @@ The instructions are finished, so after analyzing and understanding them well an
         # Update agent instructions with the dynamic niche
         self.keyword_analyzer.instructions = self.get_agent_instructions(niche)
 
+        # Update session status to processing
+        self.update_session_status("processing")
+
         # Process the Excel file directly
         excel_file_path = self.process_excel_file(file_path, actual_session_id)
         if not excel_file_path:
+            self.update_session_status("failed")
             yield RunResponse(
                 run_id=self.run_id,
                 content="Error: Failed to process Excel file",
@@ -492,7 +661,39 @@ The instructions are finished, so after analyzing and understanding them well an
                 )
 
         final_results = self.finalize_session(actual_session_id)
+        
+        # Update session status to completed with results
+        session_excel_file = f"tmp/session_keywords_{actual_session_id}.xlsx"
+        if os.path.exists(session_excel_file):
+            self.update_session_status(
+                "completed",
+                results_file_path=session_excel_file,
+                total_keywords=total_keywords
+            )
+        else:
+            self.update_session_status("completed", total_keywords=total_keywords)
+        
         yield RunResponse(run_id=self.run_id, content=final_results)
+
+
+
+    def list_sessions(self, user_id: Optional[str] = None, limit: int = 50) -> List[Dict[str, Any]]:
+        """
+        List Excel workflow sessions.
+        
+        Args:
+            user_id: Optional user ID to filter by
+            limit: Maximum number of sessions to return
+            
+        Returns:
+            List of session dictionaries
+        """
+        try:
+            session_manager = ExcelSessionManager()
+            return session_manager.list_user_sessions(user_id=user_id, limit=limit)
+        except Exception as e:
+            logger.error(f"Error listing sessions: {e}")
+            return []
 
     def get_cached_results(self, session_id: str) -> Optional[str]:
         logger.info("Checking if cached results exist")
@@ -857,7 +1058,7 @@ def get_excel_processor(
         session_id=session_id,
         storage=SqliteStorage(
             table_name="excel_processor_workflows",
-            db_file="tmp/excel_processor_agent.db",
+            db_file="tmp/agent_app.db",
             mode="workflow",
             auto_upgrade_schema=True,
         ),

@@ -8,6 +8,13 @@ from api.settings import api_settings
 def create_app() -> FastAPI:
     """Create a FastAPI App"""
 
+    # Initialize database tables
+    try:
+        from db.init_db import init_database
+        init_database()
+    except Exception as e:
+        print(f"Warning: Database initialization failed: {e}")
+
     # Create FastAPI App
     app: FastAPI = FastAPI(
         title=api_settings.title,
