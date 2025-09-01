@@ -3,11 +3,10 @@ from typing import Optional
 
 from agno.agent import Agent
 from agno.models.openai import OpenAIChat
-from agno.storage.agent.sqlite import SqliteAgentStorage
+from agno.storage.session import AgentSession
 from agno.tools.duckduckgo import DuckDuckGoTools
 
 from agents.settings import agent_settings
-from db.session import db_url
 
 
 def get_scholar(
@@ -37,7 +36,7 @@ def get_scholar(
         # Tools available to the agent
         tools=[DuckDuckGoTools()],
         # Storage for the agent
-        storage=SqliteAgentStorage(table_name="scholar_sessions", db_url=db_url),
+        storage=AgentSession(session_id="scholar_default"),
         # Description of the agent
         description=dedent("""\
             You are Scholar, a cutting-edge Answer Engine built to deliver precise, context-rich, and engaging responses.
